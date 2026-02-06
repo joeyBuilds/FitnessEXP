@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solo Leveling - Fitness & Nutrition Tracker</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Rajdhani', sans-serif; background: #0e1225; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #38456040; border-radius: 2px; }
+    @keyframes floatUp { 0% { opacity:1; transform:translateY(0) scale(1); } 100% { opacity:0; transform:translateY(-60px) scale(1.2); } }
+    @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+    @keyframes scaleIn { from { opacity:0; transform:scale(0.8); } to { opacity:1; transform:scale(1); } }
+    @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-8px); } 40% { transform:translateX(8px); } 60% { transform:translateX(-4px); } 80% { transform:translateX(4px); } }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useReducer, useMemo } = React;
+
+    // ─── Mako Color Palette ───
+    const MAKO = {
+      mint: "#c1e0d6", teal: "#5bafa0", sea: "#5d96a0", ocean: "#2d6e8a",
+      navy: "#3b4a8a", abyss: "#2a2550", bg: "#0e1225", bgCard: "#121830",
+      bgLight: "#161d3a", text: "#d0dde8", textDim: "#5a6b84", textMuted: "#384560",
+      success: "#5bafa0", warning: "#e8a838", danger: "#e05555",
+      protein: "#5bafa0", carb: "#e8a838", fat: "#7c6dd8", hydra: "#38b4f0",
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // SHARED UTILITIES
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    function getDateKey(date = new Date()) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const d = String(date.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function getWeekKey(date = new Date()) {
+      const d = new Date(date);
+      d.setDate(d.getDate() - d.getDay());
+      return getDateKey(d);
+    }
+
+    function addDays(date, n) {
+      const d = new Date(date);
+      d.setDate(d.getDate() + n);
+      return d;
+    }
+
+    function isSameDay(a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // FITNESS TRACKER DATA & LOGIC
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    const FITNESS_RANKS = [
+      { name: "E", minLevel: 1, color: "#8a9a94", glow: "rgba(138,154,148,0.15)", title: "Weakest Hunter", vivid: "#c1e0d6" },
+      { name: "D", minLevel: 5, color: "#5bafa0", glow: "rgba(91,175,160,0.25)", title: "Aspiring Hunter", vivid: "#6ee8d4" },
+      { name: "C", minLevel: 12, color: "#5d96a0", glow: "rgba(93,150,160,0.3)", title: "Proven Hunter", vivid: "#6dc8dd" },
+      { name: "B", minLevel: 22, color: "#2d6e8a", glow: "rgba(45,110,138,0.35)", title: "Elite Hunter", vivid: "#38b4f0" },
+      { name: "A", minLevel: 35, color: "#4a5cb0", glow: "rgba(74,92,176,0.45)", title: "Shadow Soldier", vivid: "#6b80f0" },
+      { name: "S", minLevel: 50, color: "#7c6dd8", glow: "rgba(124,109,216,0.5)", title: "Shadow Monarch", vivid: "#a78bfa" },
+      { name: "S+", minLevel: 75, color: "#a78bfa", glow: "rgba(167,139,250,0.55)", title: "Sovereign", vivid: "#c4b5fd" },
+      { name: "National", minLevel: 100, color: "#c4b5fd", glow: "rgba(196,181,253,0.65)", title: "Absolute Being", vivid: "#e2d8ff" },
+    ];
+
+    function getFitnessVibrancy(level) {
+      const rankIndex = FITNESS_RANKS.reduce((idx, r, i) => level >= r.minLevel ? i : idx, 0);
+      return Math.min(rankIndex / 7, 1);
+    }
+
+    function vibrateColor(baseHex, vibrancy) {
+      const r = parseInt(baseHex.slice(1, 3), 16);
+      const g = parseInt(baseHex.slice(3, 5), 16);
+      const b = parseInt(baseHex.slice(5, 7), 16);
+      const gray = (r + g + b) / 3;
+      const desatR = Math.round(gray + (r - gray) * (0.3 + vibrancy * 0.7));
+      const desatG = Math.round(gray + (g - gray) * (0.3 + vibrancy * 0.7));
+      const desatB = Math.round(gray + (b - gray) * (0.3 + vibrancy * 0.7));
+      const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+      return `#${clamp(desatR).toString(16).padStart(2,"0")}${clamp(desatG).toString(16).padStart(2,"0")}${clamp(desatB).toString(16).padStart(2,"0")}`;
+    }
+
+    const QUESTS = [
+      { id: "stretch", name: "Stretching Protocol", desc: "Swole-in-Seven Stretch (7 min)", xp: 30, icon: "🧘", daily: true },
+      { id: "core", name: "Core Enhancement", desc: "Swole-in-Seven Core (7 min)", xp: 35, icon: "💪", daily: true },
+      { id: "pushups", name: "Push-Up Trial", desc: "50 Push-Ups", xp: 40, icon: "⬆️", daily: true },
+      { id: "squats", name: "Squat Trial", desc: "50 Squats", xp: 40, icon: "🦵", daily: true },
+      { id: "dogwalk", name: "Beast Patrol", desc: "Walk the Dogs", xp: 25, icon: "🐕", daily: true },
+      { id: "gym", name: "Dungeon Raid", desc: "Gym: 30 min Incline Treadmill", xp: 60, icon: "🏋️", daily: false, weeklyTarget: 3 },
+    ];
+
+    const TOTAL_QUESTS = QUESTS.length;
+
+    const MOTIVATIONAL_QUOTES = [
+      { text: "I alone level up.", type: "serious" },
+      { text: "The System rewards those who show up.", type: "serious" },
+      { text: "Every rep is a shadow soldier joining your army.", type: "serious" },
+      { text: "The difference between E-Rank and S-Rank is consistency.", type: "serious" },
+      { text: "A hunter who skips training is just prey.", type: "serious" },
+      { text: "Your daily quest isn't optional. The penalty is real.", type: "serious" },
+      { text: "The weakest hunter became the strongest. What's your excuse?", type: "serious" },
+      { text: "Rise. Your shadows are watching.", type: "serious" },
+      { text: "50 push-ups today, 50 more tomorrow. This is the way.", type: "serious" },
+      { text: "Sung Jin-Woo didn't have a snooze button. Neither do you.", type: "funny" },
+      { text: "The System has detected you thinking about skipping. Don't.", type: "funny" },
+      { text: "Your couch is a C-Rank dungeon. Escape immediately.", type: "funny" },
+      { text: "Half a box of Goodles is still Goodles. You're not suffering.", type: "funny" },
+      { text: "The dogs believe in you. Don't let them down.", type: "funny" },
+      { text: "Jin-Woo did 100 push-ups. You're doing 50. You have it easy.", type: "funny" },
+      { text: "Your pants are the real final boss.", type: "funny" },
+    ];
+
+    const DAILY_SKIP_PENALTY = -15;
+
+    function getFitnessXpForLevel(level) {
+      return Math.floor(80 * Math.pow(1.12, level - 1));
+    }
+
+    function getFitnessRank(level) {
+      let rank = FITNESS_RANKS[0];
+      for (const r of FITNESS_RANKS) { if (level >= r.minLevel) rank = r; }
+      return rank;
+    }
+
+    function getNextFitnessRank(level) {
+      for (const r of FITNESS_RANKS) { if (level < r.minLevel) return r; }
+      return null;
+    }
+
+    function getFitnessRankIndex(level) {
+      return FITNESS_RANKS.reduce((idx, r, i) => level >= r.minLevel ? i : idx, 0);
+    }
+
+    function getDailyQuote() {
+      const today = new Date();
+      const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+      return MOTIVATIONAL_QUOTES[seed % MOTIVATIONAL_QUOTES.length];
+    }
+
+    // ─── Fitness State ───
+    const fitnessInitialState = {
+      level: 1, xp: 0, totalXp: 0, log: {}, weeklyGymLog: {},
+      penalties: 0, fitnessTab: "quests",
+      animatingXp: false, xpGain: 0, showLevelUp: false,
+      showPenalty: false, penaltyAmount: 0,
+      streak: 0, loaded: false,
+    };
+
+    function recalcFitnessLevelFromXp(totalXp) {
+      let level = 1;
+      let remaining = totalXp;
+      while (remaining >= getFitnessXpForLevel(level)) {
+        remaining -= getFitnessXpForLevel(level);
+        level++;
+      }
+      return { level, xp: remaining };
+    }
+
+    function fitnessReducer(state, action) {
+      switch (action.type) {
+        case "LOAD_STATE": return { ...state, ...action.payload, loaded: true };
+        case "COMPLETE_QUEST": {
+          const { questId } = action;
+          const today = getDateKey();
+          const todayLog = state.log[today] || [];
+          if (todayLog.includes(questId)) return state;
+          const quest = QUESTS.find((q) => q.id === questId);
+          const newLog = { ...state.log, [today]: [...todayLog, questId] };
+          let newWeeklyGym = { ...state.weeklyGymLog };
+          if (questId === "gym") {
+            const wk = getWeekKey();
+            newWeeklyGym[wk] = (newWeeklyGym[wk] || 0) + 1;
+          }
+          let newXp = state.xp + quest.xp;
+          let newLevel = state.level;
+          let newTotalXp = state.totalXp + quest.xp;
+          let leveledUp = false;
+          while (newXp >= getFitnessXpForLevel(newLevel)) {
+            newXp -= getFitnessXpForLevel(newLevel);
+            newLevel++;
+            leveledUp = true;
+          }
+          const dailyQuests = QUESTS.filter((q) => q.daily);
+          const allDailyDone = dailyQuests.every((q) => [...todayLog, questId].includes(q.id));
+          const newStreak = allDailyDone ? state.streak + 1 : state.streak;
+          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyGymLog: newWeeklyGym, animatingXp: true, xpGain: quest.xp, showLevelUp: leveledUp, streak: newStreak };
+        }
+        case "UNCOMPLETE_QUEST": {
+          const { questId } = action;
+          const today = getDateKey();
+          const todayLog = state.log[today] || [];
+          if (!todayLog.includes(questId)) return state;
+          const quest = QUESTS.find((q) => q.id === questId);
+          const newLog = { ...state.log, [today]: todayLog.filter(id => id !== questId) };
+          if (newLog[today].length === 0) delete newLog[today];
+          let newWeeklyGym = { ...state.weeklyGymLog };
+          if (questId === "gym") {
+            const wk = getWeekKey();
+            newWeeklyGym[wk] = Math.max(0, (newWeeklyGym[wk] || 0) - 1);
+          }
+          const newTotalXp = Math.max(0, state.totalXp - quest.xp);
+          const { level: newLevel, xp: newXp } = recalcFitnessLevelFromXp(newTotalXp);
+          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyGymLog: newWeeklyGym, animatingXp: true, xpGain: -quest.xp };
+        }
+        case "APPLY_PENALTY": {
+          const newXp = Math.max(0, state.xp + action.amount);
+          return { ...state, xp: newXp, penalties: state.penalties + 1, showPenalty: true, penaltyAmount: action.amount, streak: 0 };
+        }
+        case "CLEAR_ANIMATIONS": return { ...state, animatingXp: false, xpGain: 0, showLevelUp: false, showPenalty: false, penaltyAmount: 0 };
+        case "SET_FITNESS_TAB": return { ...state, fitnessTab: action.tab };
+        case "RESET": return { ...fitnessInitialState, loaded: true };
+        default: return state;
+      }
+    }
+
+    function saveFitnessState(state) {
+      try {
+        localStorage.setItem("solo-leveling-v4", JSON.stringify({
+          level: state.level, xp: state.xp, totalXp: state.totalXp,
+          log: state.log, weeklyGymLog: state.weeklyGymLog,
+          penalties: state.penalties, streak: state.streak,
+        }));
+      } catch (e) { console.error("Save failed:", e); }
+    }
+
+    function loadFitnessState() {
+      for (const key of ["solo-leveling-v4", "solo-leveling-v3"]) {
+        try {
+          const r = localStorage.getItem(key);
+          if (r) return JSON.parse(r);
+        } catch (e) {}
+      }
+      return null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // NUTRITION TRACKER DATA & LOGIC
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    const NUTRITION_RANKS = [
+      { name: "F", minLevel: 1, color: "#78716c", glow: "rgba(120,113,108,0.15)", title: "Starving Rookie", vivid: "#a8a29e" },
+      { name: "E", minLevel: 4, color: "#d97706", glow: "rgba(217,119,6,0.2)", title: "Calorie Counter", vivid: "#f59e0b" },
+      { name: "D", minLevel: 10, color: "#ea580c", glow: "rgba(234,88,12,0.25)", title: "Macro Tracker", vivid: "#fb923c" },
+      { name: "C", minLevel: 18, color: "#e8a838", glow: "rgba(232,168,56,0.3)", title: "Clean Eater", vivid: "#fbbf24" },
+      { name: "B", minLevel: 28, color: "#ca8a04", glow: "rgba(202,138,4,0.35)", title: "Nutrition Soldier", vivid: "#facc15" },
+      { name: "A", minLevel: 40, color: "#65a30d", glow: "rgba(101,163,13,0.4)", title: "Diet Master", vivid: "#84cc16" },
+      { name: "S", minLevel: 55, color: "#16a34a", glow: "rgba(22,163,74,0.5)", title: "Fuel Optimizer", vivid: "#22c55e" },
+      { name: "S+", minLevel: 75, color: "#10b981", glow: "rgba(16,185,129,0.55)", title: "Nutrition Sovereign", vivid: "#34d399" },
+    ];
+
+    function getNutritionVibrancy(level) {
+      const rankIndex = NUTRITION_RANKS.reduce((idx, r, i) => level >= r.minLevel ? i : idx, 0);
+      return Math.min(rankIndex / 7, 1);
+    }
+
+    function getNutritionXpForLevel(level) {
+      return Math.floor(60 * Math.pow(1.10, level - 1));
+    }
+
+    function getNutritionRank(level) {
+      let rank = NUTRITION_RANKS[0];
+      for (const r of NUTRITION_RANKS) { if (level >= r.minLevel) rank = r; }
+      return rank;
+    }
+
+    function getNextNutritionRank(level) {
+      for (const r of NUTRITION_RANKS) { if (level < r.minLevel) return r; }
+      return null;
+    }
+
+    const MEALS = [
+      {
+        id: "breakfast", time: "7–9 AM", name: "Morning Fuel", icon: "🌅", xp: 15,
+        items: [
+          { id: "b1", text: "4 eggs scrambled w/ veggies", detail: "Tomatoes, onion, garlic, red pepper", protein: 28, cals: 340, status: "keep", xp: 8 },
+          { id: "b2", text: "¼ cup pumpkin seeds + yogurt", detail: "Greek yogurt if possible", protein: 18, cals: 280, status: "keep", xp: 6 },
+          { id: "b3", text: "1 glass water (16 oz)", detail: "Rehydrate first thing", protein: 0, cals: 0, status: "add", xp: 3 },
+        ],
+        totalProtein: 46, totalCals: 620,
+      },
+      {
+        id: "lunch", time: "12–1 PM", name: "Midday Refuel", icon: "⚡", xp: 20,
+        items: [
+          { id: "l1", text: "Actual meal — not optional", detail: "This is the gap wrecking your evening", protein: 0, cals: 0, status: "critical", xp: 10 },
+          { id: "l2", text: "Protein source (pick one)", detail: "Rotisserie chicken, tuna, turkey, or eggs", protein: 30, cals: 200, status: "add", xp: 8 },
+          { id: "l3", text: "Complex carb (pick one)", detail: "Rice, sweet potato, or whole grain bread", protein: 4, cals: 180, status: "add", xp: 4 },
+          { id: "l4", text: "Veggies or greens", detail: "Bagged salad, carrots, cucumber", protein: 2, cals: 30, status: "add", xp: 4 },
+        ],
+        totalProtein: 36, totalCals: 410,
+      },
+      {
+        id: "snack", time: "3–4 PM", name: "Afternoon Rations", icon: "🎯", xp: 12,
+        items: [
+          { id: "s1", text: "Protein bar", detail: "Kirkland bars are solid — 21g protein", protein: 21, cals: 190, status: "keep", xp: 6 },
+          { id: "s2", text: "OR Greek yogurt + nuts", detail: "Better than dried mango", protein: 18, cals: 220, status: "swap", xp: 6 },
+          { id: "s3", text: "Skip the dried mangos", detail: "35-50g sugar per bag", protein: 0, cals: 0, status: "drop", xp: 4 },
+        ],
+        totalProtein: 20, totalCals: 200,
+      },
+      {
+        id: "dinner", time: "6–7:30 PM", name: "Hello Fresh Raid", icon: "🍽️", xp: 18,
+        items: [
+          { id: "d1", text: "Hello Fresh meal (chicken preferred)", detail: "Prioritize protein dishes", protein: 35, cals: 550, status: "keep", xp: 8 },
+          { id: "d2", text: "Extra protein if meal is light", detail: "Add chicken or an egg if needed", protein: 10, cals: 80, status: "add", xp: 5 },
+          { id: "d3", text: "Half-box Goodles MAX if craving", detail: "Treat as side, not meal", protein: 6, cals: 400, status: "limit", xp: 5 },
+        ],
+        totalProtein: 45, totalCals: 700,
+      },
+      {
+        id: "evening", time: "After 8 PM", name: "Late-Night Defense", icon: "🛡️", xp: 15,
+        items: [
+          { id: "e1", text: "Casein protein or Greek yogurt", detail: "Slow-digesting protein", protein: 20, cals: 130, status: "add", xp: 6 },
+          { id: "e2", text: "Herbal tea (non-caffeinated)", detail: "Signals 'done eating' to brain", protein: 0, cals: 0, status: "add", xp: 4 },
+          { id: "e3", text: "Kitchen closes at 9 PM", detail: "Brush your teeth", protein: 0, cals: 0, status: "critical", xp: 8 },
+        ],
+        totalProtein: 20, totalCals: 130,
+      },
+    ];
+
+    const HYDRATION = [
+      { id: "h1", text: "Morning glass (16 oz)", time: "Wake up", xp: 4 },
+      { id: "h2", text: "Mid-morning (16 oz)", time: "10 AM", xp: 4 },
+      { id: "h3", text: "With lunch (16 oz)", time: "12 PM", xp: 4 },
+      { id: "h4", text: "Afternoon (16 oz)", time: "3 PM", xp: 4 },
+      { id: "h5", text: "With dinner (16 oz)", time: "6 PM", xp: 4 },
+    ];
+
+    const ALANI_RULES = [
+      { id: "a1", text: "Max 1 Alani Nu per day", detail: "200mg caffeine is your ceiling", xp: 8 },
+      { id: "a2", text: "None after 2 PM", detail: "Caffeine half-life is 5-6 hours", xp: 6 },
+      { id: "a3", text: "Replace extras with sparkling water", detail: "Topo Chico scratches the same itch", xp: 4 },
+    ];
+
+    const STATUS_CONFIG = {
+      keep: { label: "KEEP", color: MAKO.success, bg: `${MAKO.success}12` },
+      add: { label: "ADD", color: MAKO.hydra, bg: `${MAKO.hydra}12` },
+      swap: { label: "SWAP", color: MAKO.warning, bg: `${MAKO.warning}12` },
+      drop: { label: "DROP", color: MAKO.danger, bg: `${MAKO.danger}12` },
+      limit: { label: "LIMIT", color: MAKO.fat, bg: `${MAKO.fat}12` },
+      critical: { label: "KEY", color: MAKO.danger, bg: `${MAKO.danger}15` },
+    };
+
+    const ALL_MEAL_ITEMS = MEALS.flatMap(m => m.items);
+    const ALL_NUTRITION_ITEMS = [...ALL_MEAL_ITEMS, ...HYDRATION, ...ALANI_RULES];
+    const TOTAL_NUTRITION_ITEMS = ALL_NUTRITION_ITEMS.length;
+    const MAX_DAILY_NUTRITION_XP = ALL_NUTRITION_ITEMS.reduce((sum, item) => sum + (item.xp || 0), 0);
+    const NUTRITION_SKIP_PENALTY = -8;
+
+    const nutritionInitialState = {
+      level: 1, xp: 0, totalXp: 0, log: {},
+      penalties: 0, nutritionTab: "meals",
+      animatingXp: false, xpGain: 0, showLevelUp: false,
+      showPenalty: false, penaltyAmount: 0,
+      streak: 0, loaded: false,
+    };
+
+    function recalcNutritionLevelFromXp(totalXp) {
+      let level = 1;
+      let remaining = totalXp;
+      while (remaining >= getNutritionXpForLevel(level)) {
+        remaining -= getNutritionXpForLevel(level);
+        level++;
+      }
+      return { level, xp: remaining };
+    }
+
+    function nutritionReducer(state, action) {
+      switch (action.type) {
+        case "LOAD_STATE": return { ...state, ...action.payload, loaded: true };
+        case "COMPLETE_ITEM": {
+          const { itemId } = action;
+          const today = getDateKey();
+          const todayLog = state.log[today] || [];
+          if (todayLog.includes(itemId)) return state;
+          const item = ALL_NUTRITION_ITEMS.find((i) => i.id === itemId);
+          const itemXp = item?.xp || 0;
+          const newLog = { ...state.log, [today]: [...todayLog, itemId] };
+          let newXp = state.xp + itemXp;
+          let newLevel = state.level;
+          let newTotalXp = state.totalXp + itemXp;
+          let leveledUp = false;
+          while (newXp >= getNutritionXpForLevel(newLevel)) {
+            newXp -= getNutritionXpForLevel(newLevel);
+            newLevel++;
+            leveledUp = true;
+          }
+          const allDone = ALL_NUTRITION_ITEMS.every((i) => [...todayLog, itemId].includes(i.id));
+          const newStreak = allDone ? state.streak + 1 : state.streak;
+          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, animatingXp: itemXp > 0, xpGain: itemXp, showLevelUp: leveledUp, streak: newStreak };
+        }
+        case "UNCOMPLETE_ITEM": {
+          const { itemId } = action;
+          const today = getDateKey();
+          const todayLog = state.log[today] || [];
+          if (!todayLog.includes(itemId)) return state;
+          const item = ALL_NUTRITION_ITEMS.find((i) => i.id === itemId);
+          const itemXp = item?.xp || 0;
+          const newLog = { ...state.log, [today]: todayLog.filter(id => id !== itemId) };
+          if (newLog[today].length === 0) delete newLog[today];
+          const newTotalXp = Math.max(0, state.totalXp - itemXp);
+          const { level: newLevel, xp: newXp } = recalcNutritionLevelFromXp(newTotalXp);
+          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, animatingXp: itemXp > 0, xpGain: -itemXp };
+        }
+        case "APPLY_PENALTY": {
+          const newXp = Math.max(0, state.xp + action.amount);
+          return { ...state, xp: newXp, penalties: state.penalties + 1, showPenalty: true, penaltyAmount: action.amount, streak: 0 };
+        }
+        case "CLEAR_ANIMATIONS": return { ...state, animatingXp: false, xpGain: 0, showLevelUp: false, showPenalty: false, penaltyAmount: 0 };
+        case "SET_NUTRITION_TAB": return { ...state, nutritionTab: action.tab };
+        case "RESET": return { ...nutritionInitialState, loaded: true };
+        default: return state;
+      }
+    }
+
+    function saveNutritionState(state) {
+      try {
+        localStorage.setItem("solo-leveling-nutrition-v1", JSON.stringify({
+          level: state.level, xp: state.xp, totalXp: state.totalXp,
+          log: state.log, penalties: state.penalties, streak: state.streak,
+        }));
+      } catch (e) { console.error("Save failed:", e); }
+    }
+
+    function loadNutritionState() {
+      try {
+        const r = localStorage.getItem("solo-leveling-nutrition-v1");
+        if (r) return JSON.parse(r);
+      } catch (e) {}
+      return null;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // COMPONENTS
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    function ShadowMonarchArt({ rank, level, type = "fitness" }) {
+      const vib = type === "fitness" ? getFitnessVibrancy(level) : getNutritionVibrancy(level);
+      const ri = type === "fitness" ? getFitnessRankIndex(level) : NUTRITION_RANKS.reduce((idx, r, i) => level >= r.minLevel ? i : idx, 0);
+      const eyeColor = rank.vivid || rank.color;
+      const auraOpacity = 0.08 + vib * 0.5;
+      const armorOpacity = 0.15 + vib * 0.55;
+      const wispXs = ri >= 4 ? [55, 70, 90, 110, 130] : ri >= 2 ? [60, 80, 110, 130] : [70, 100, 130];
+      const eyeSize = 3.5 + vib * 2;
+      const crestOpacity = 0.3 + vib * 0.6;
+      const showSword = ri >= 3;
+      const showCrown = ri >= 5;
+      const showWings = ri >= 6;
+
+      return (
+        <svg viewBox="0 0 200 230" width="130" height="150" style={{ display: "block", margin: "0 auto" }}>
+          <defs>
+            <radialGradient id={`aura-${type}`} cx="50%" cy="42%" r="50%">
+              <stop offset="0%" stopColor={eyeColor} stopOpacity={auraOpacity} />
+              <stop offset="60%" stopColor={rank.color} stopOpacity={auraOpacity * 0.3} />
+              <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient id={`bodyGrad-${type}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={vib > 0.5 ? MAKO.navy : MAKO.abyss} />
+              <stop offset="100%" stopColor={MAKO.bg} />
+            </linearGradient>
+            <filter id={`glow-${type}`}>
+              <feGaussianBlur stdDeviation={2 + vib * 3} result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <ellipse cx="100" cy="100" rx={85 + vib * 15} ry={95 + vib * 15} fill={`url(#aura-${type})`} />
+          {showWings && (
+            <g opacity={0.15 + vib * 0.2} filter={`url(#glow-${type})`}>
+              <path d="M45 90 Q20 60 15 35 Q25 55 50 70 Z" fill={eyeColor} opacity="0.5" />
+              <path d="M155 90 Q180 60 185 35 Q175 55 150 70 Z" fill={eyeColor} opacity="0.5" />
+            </g>
+          )}
+          <path d="M100 40 C65 40 45 70 45 105 C45 145 60 175 75 200 L125 200 C140 175 155 145 155 105 C155 70 135 40 100 40Z" fill={`url(#bodyGrad-${type})`} opacity={0.8 + vib * 0.15} />
+          <g opacity={armorOpacity}>
+            <path d="M85 75 L80 125 M115 75 L120 125" stroke={eyeColor} strokeWidth={0.8 + vib} fill="none" />
+            <path d="M75 135 L100 152 L125 135" stroke={eyeColor} strokeWidth={0.8 + vib} fill="none" />
+          </g>
+          {showSword && (
+            <g opacity={0.3 + vib * 0.4} filter={`url(#glow-${type})`}>
+              <line x1="155" y1="55" x2="170" y2="175" stroke={eyeColor} strokeWidth={1.5 + vib} strokeLinecap="round" />
+            </g>
+          )}
+          {showCrown && (
+            <g filter={`url(#glow-${type})`} opacity={0.4 + vib * 0.4}>
+              <path d="M82 30 L88 20 L94 28 L100 15 L106 28 L112 20 L118 30" fill="none" stroke={eyeColor} strokeWidth={1 + vib} />
+            </g>
+          )}
+          <path d="M100 35 C78 35 62 52 62 72 C62 92 78 100 100 100 C122 100 138 92 138 72 C138 52 122 35 100 35Z" fill={MAKO.abyss} stroke={eyeColor} strokeWidth={0.3 + vib * 0.7} opacity={0.75 + vib * 0.2} />
+          {!showCrown && (
+            <>
+              <path d="M100 28 L95 45 L100 40 L105 45 Z" fill={eyeColor} opacity={crestOpacity} />
+              <path d="M80 50 L65 38" stroke={eyeColor} strokeWidth={1 + vib} opacity={crestOpacity * 0.7} strokeLinecap="round" />
+              <path d="M120 50 L135 38" stroke={eyeColor} strokeWidth={1 + vib} opacity={crestOpacity * 0.7} strokeLinecap="round" />
+            </>
+          )}
+          <g filter={`url(#glow-${type})`}>
+            <ellipse cx="87" cy="68" rx={5 + vib * 1.5} ry={eyeSize} fill={eyeColor} opacity={0.7 + vib * 0.3} />
+            <ellipse cx="113" cy="68" rx={5 + vib * 1.5} ry={eyeSize} fill={eyeColor} opacity={0.7 + vib * 0.3} />
+          </g>
+          {wispXs.map((x, i) => (
+            <g key={i} opacity={0.08 + vib * 0.15}>
+              <path d={`M${x} 200 Q${x-5} 178 ${x+3} 162 Q${x+8} 146 ${x} 130`} stroke={eyeColor} strokeWidth={1 + vib * 0.8} fill="none" strokeLinecap="round" />
+            </g>
+          ))}
+          <text x="100" y="225" textAnchor="middle" fill={eyeColor} fontSize="10" fontFamily="'Orbitron', monospace" opacity={0.3 + vib * 0.4} letterSpacing="3">
+            LV.{level}
+          </text>
+        </svg>
+      );
+    }
+
+    function XpBurst({ amount, onDone, color }) {
+      const [visible, setVisible] = useState(true);
+      useEffect(() => { const t = setTimeout(() => { setVisible(false); onDone(); }, 1200); return () => clearTimeout(t); }, []);
+      if (!visible) return null;
+      return (
+        <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 1000, pointerEvents: "none" }}>
+          <div style={{
+            fontSize: "2.5rem", fontWeight: 900,
+            color: amount > 0 ? (color || MAKO.success) : MAKO.danger,
+            textShadow: `0 0 30px ${amount > 0 ? (color || MAKO.success) : MAKO.danger}`,
+            animation: "floatUp 1.2s ease-out forwards", fontFamily: "'Rajdhani', sans-serif",
+          }}>{amount > 0 ? `+${amount} XP` : `${amount} XP`}</div>
+        </div>
+      );
+    }
+
+    function LevelUpOverlay({ level, onDone, rank, type }) {
+      const [visible, setVisible] = useState(true);
+      useEffect(() => { const t = setTimeout(() => { setVisible(false); onDone(); }, 3000); return () => clearTimeout(t); }, []);
+      if (!visible) return null;
+      return (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 2000,
+          background: `radial-gradient(circle at 50% 40%, ${MAKO.abyss}ee 0%, ${MAKO.bg}fa 100%)`,
+          display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.3s ease-out",
+        }} onClick={() => { setVisible(false); onDone(); }}>
+          <div style={{ textAlign: "center", animation: "scaleIn 0.5s ease-out" }}>
+            <div style={{ fontSize: "0.75rem", letterSpacing: "0.5em", color: MAKO.textDim, textTransform: "uppercase", marginBottom: 10, fontFamily: "'Rajdhani', sans-serif" }}>
+              {type === "nutrition" ? "NUTRITION" : "FITNESS"} LEVEL UP
+            </div>
+            <div style={{ fontSize: "3rem", fontWeight: 900, color: rank.vivid || rank.color, textShadow: `0 0 40px ${rank.glow}`, fontFamily: "'Orbitron', sans-serif" }}>LEVEL {level}</div>
+            <div style={{ fontSize: "0.9rem", color: rank.vivid || rank.color, marginTop: 4, fontFamily: "'Rajdhani', sans-serif", opacity: 0.8, letterSpacing: "0.2em" }}>{rank.title.toUpperCase()}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function PenaltyOverlay({ amount, onDone, type }) {
+      const [visible, setVisible] = useState(true);
+      useEffect(() => { const t = setTimeout(() => { setVisible(false); onDone(); }, 2000); return () => clearTimeout(t); }, []);
+      if (!visible) return null;
+      return (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 2000,
+          background: `radial-gradient(circle at 50% 40%, #2a0a0aee 0%, ${MAKO.bg}fa 100%)`,
+          display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.3s ease-out",
+        }} onClick={() => { setVisible(false); onDone(); }}>
+          <div style={{ textAlign: "center", animation: "shake 0.5s ease-out" }}>
+            <div style={{ fontSize: "0.75rem", letterSpacing: "0.5em", color: MAKO.danger, textTransform: "uppercase", marginBottom: 10, fontFamily: "'Rajdhani', sans-serif" }}>
+              ⚠ {type === "nutrition" ? "NUTRITION" : "FITNESS"} PENALTY ⚠
+            </div>
+            <div style={{ fontSize: "2rem", fontWeight: 900, color: MAKO.danger, textShadow: `0 0 40px ${MAKO.danger}`, fontFamily: "'Rajdhani', sans-serif" }}>{amount} XP</div>
+          </div>
+        </div>
+      );
+    }
+
+    function Heatmap({ log, totalItems, accentColor, vib }) {
+      const today = new Date();
+      const totalWeeks = 14;
+      const startDate = new Date(today);
+      startDate.setDate(startDate.getDate() - ((totalWeeks - 1) * 7 + startDate.getDay()));
+      const weeks = [];
+      let current = new Date(startDate);
+      for (let w = 0; w < totalWeeks; w++) {
+        const week = [];
+        for (let d = 0; d < 7; d++) { week.push(new Date(current)); current = addDays(current, 1); }
+        weeks.push(week);
+      }
+      function getIntensity(date) {
+        const key = getDateKey(date);
+        const dayLog = log[key] || [];
+        if (dayLog.length === 0) return 0;
+        const ratio = dayLog.length / totalItems;
+        if (ratio <= 0.25) return 1;
+        if (ratio <= 0.5) return 2;
+        if (ratio <= 0.85) return 3;
+        return 4;
+      }
+      const intensityColors = [
+        `${MAKO.textMuted}15`,
+        vibrateColor(accentColor, vib) + "44",
+        vibrateColor(accentColor, vib) + "77",
+        vibrateColor(accentColor, vib) + "aa",
+        vibrateColor(accentColor, vib),
+      ];
+      const cellSize = 10;
+      const cellGap = 2;
+
+      return (
+        <div style={{ display: "flex", gap: cellGap, justifyContent: "center" }}>
+          {weeks.map((week, wi) => (
+            <div key={wi} style={{ display: "flex", flexDirection: "column", gap: cellGap }}>
+              {week.map((date, di) => {
+                const intensity = date > today ? -1 : getIntensity(date);
+                const isToday = isSameDay(date, today);
+                return (
+                  <div key={di} style={{
+                    width: cellSize, height: cellSize, borderRadius: 2,
+                    background: intensity < 0 ? "transparent" : intensityColors[intensity],
+                    border: isToday ? `1.5px solid ${accentColor}` : intensity < 0 ? "1px solid transparent" : `1px solid ${MAKO.textMuted}15`,
+                    boxShadow: isToday ? `0 0 4px ${accentColor}50` : "none",
+                  }} />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function QuestCard({ quest, completed, onToggle, rank, vib }) {
+      const [hovering, setHovering] = useState(false);
+      const accentColor = rank.vivid || rank.color;
+      return (
+        <div
+          onMouseEnter={() => setHovering(true)}
+          onMouseLeave={() => setHovering(false)}
+          onClick={() => onToggle(quest.id, completed)}
+          style={{
+            background: completed ? `linear-gradient(135deg, ${MAKO.success}08 0%, ${MAKO.success}04 100%)` : hovering ? `linear-gradient(135deg, ${MAKO.bgLight} 0%, ${MAKO.bgCard} 100%)` : `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`,
+            border: completed ? `1px solid ${MAKO.success}30` : `1px solid ${hovering ? MAKO.textMuted + "60" : MAKO.textMuted + "20"}`,
+            borderRadius: 10, padding: "10px 12px", cursor: "pointer", transition: "all 0.3s ease",
+            display: "flex", alignItems: "center", gap: 10, position: "relative", overflow: "hidden",
+            transform: hovering ? "translateY(-1px)" : "none",
+          }}
+        >
+          {completed && <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 3, background: `linear-gradient(180deg, ${MAKO.success}, ${MAKO.teal})` }} />}
+          <div style={{ fontSize: "1.3rem", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", background: completed ? `${MAKO.success}15` : `${MAKO.textMuted}10`, borderRadius: 8, flexShrink: 0 }}>{quest.icon}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "0.88rem", color: completed ? MAKO.success : MAKO.text, textDecoration: completed ? "line-through" : "none", textDecorationColor: `${MAKO.success}40` }}>{quest.name}</div>
+            <div style={{ fontSize: "0.68rem", color: MAKO.textDim, marginTop: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+              {quest.desc}
+              {!quest.daily && <span style={{ color: MAKO.warning, marginLeft: 6 }}>• {quest.weeklyTarget}x/wk</span>}
+            </div>
+          </div>
+          <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 800, fontSize: "0.82rem", color: completed ? `${MAKO.success}70` : accentColor, whiteSpace: "nowrap" }}>{completed ? "✓" : `+${quest.xp}`}</div>
+        </div>
+      );
+    }
+
+    function DietCheckItem({ item, checked, onToggle, showStatus, showXp = true }) {
+      const [hover, setHover] = useState(false);
+      const status = showStatus && item.status ? STATUS_CONFIG[item.status] : null;
+      const dietSuccess = "#22c55e"; // green for completed
+      const dietAccent = "#f59e0b"; // warm amber for nutrition
+      return (
+        <div
+          onClick={() => onToggle(item.id)}
+          onMouseEnter={() => setHover(true)}
+          onMouseLeave={() => setHover(false)}
+          style={{
+            display: "flex", alignItems: "flex-start", gap: 10, padding: "7px 10px",
+            background: checked ? `${dietSuccess}08` : hover ? `${dietAccent}08` : "transparent",
+            borderRadius: 6, cursor: "pointer", transition: "all 0.2s",
+            borderLeft: checked ? `2px solid ${dietSuccess}50` : "2px solid transparent",
+          }}
+        >
+          <div style={{
+            width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: 2,
+            border: checked ? `2px solid ${dietSuccess}` : `2px solid ${dietAccent}50`,
+            background: checked ? `${dietSuccess}20` : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: "0.6rem", color: dietSuccess, transition: "all 0.2s",
+          }}>{checked ? "✓" : ""}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: "0.78rem", fontWeight: 600, color: checked ? `${dietSuccess}bb` : MAKO.text,
+              textDecoration: checked ? "line-through" : "none", textDecorationColor: `${dietSuccess}40`,
+              fontFamily: "'Rajdhani', sans-serif", lineHeight: 1.3,
+            }}>
+              {item.text}
+              {status && <span style={{ marginLeft: 5, fontSize: "0.5rem", fontWeight: 800, color: status.color, background: status.bg, padding: "1px 4px", borderRadius: 3, letterSpacing: "0.06em", verticalAlign: "middle" }}>{status.label}</span>}
+            </div>
+            {item.detail && <div style={{ fontSize: "0.65rem", color: MAKO.textDim, marginTop: 1, fontFamily: "'Rajdhani', sans-serif", lineHeight: 1.3 }}>{item.detail}</div>}
+            {(item.protein > 0 || item.cals > 0) && (
+              <div style={{ display: "flex", gap: 6, marginTop: 2, fontSize: "0.55rem", fontFamily: "'Rajdhani', sans-serif" }}>
+                {item.protein > 0 && <span style={{ color: dietAccent, fontWeight: 700 }}>{item.protein}g</span>}
+                {item.cals > 0 && <span style={{ color: MAKO.textMuted }}>{item.cals} cal</span>}
+              </div>
+            )}
+          </div>
+          {showXp && item.xp > 0 && (
+            <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "0.7rem", color: checked ? `${dietSuccess}60` : dietAccent, whiteSpace: "nowrap" }}>
+              {checked ? "✓" : `+${item.xp}`}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function MealSection({ meal, todayLog, onToggle }) {
+      const completedCount = meal.items.filter(i => todayLog.includes(i.id)).length;
+      const allDone = completedCount === meal.items.length;
+      const mealXp = meal.items.reduce((sum, i) => sum + (i.xp || 0), 0);
+      const earnedXp = meal.items.filter(i => todayLog.includes(i.id)).reduce((sum, i) => sum + (i.xp || 0), 0);
+      const mealAccent = "#f59e0b"; // warm amber for nutrition
+      const mealSuccess = "#22c55e"; // green for completed
+      return (
+        <div style={{
+          background: `linear-gradient(135deg, rgba(30,22,18,0.85) 0%, rgba(20,16,12,0.9) 100%)`,
+          border: allDone ? `1px solid ${mealSuccess}35` : `1px solid ${mealAccent}20`,
+          borderRadius: 10, overflow: "hidden", marginBottom: 8, transition: "border-color 0.3s",
+        }}>
+          <div style={{ padding: "8px 12px 6px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${mealAccent}15` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: "1.1rem" }}>{meal.icon}</div>
+              <div>
+                <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "0.88rem", color: allDone ? mealSuccess : MAKO.text }}>{meal.name}</div>
+                <div style={{ fontSize: "0.55rem", color: MAKO.textDim, fontFamily: "'Rajdhani', sans-serif", letterSpacing: "0.06em" }}>{meal.time}</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: "0.55rem", color: allDone ? mealSuccess : MAKO.textMuted, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700 }}>{completedCount}/{meal.items.length}</div>
+              <div style={{ fontSize: "0.55rem", color: allDone ? mealSuccess : mealAccent, fontFamily: "'Rajdhani', sans-serif" }}>{earnedXp}/{mealXp} XP</div>
+            </div>
+          </div>
+          <div style={{ padding: "3px 2px" }}>
+            {meal.items.map(item => <DietCheckItem key={item.id} item={item} checked={todayLog.includes(item.id)} onToggle={onToggle} showStatus={true} />)}
+          </div>
+        </div>
+      );
+    }
+
+    function PerformanceOverview({ fitnessState, nutritionState, fitnessRank, nutritionRank }) {
+      const today = getDateKey();
+      const fitnessTodayLog = fitnessState.log[today] || [];
+      const nutritionTodayLog = nutritionState.log[today] || [];
+
+      const fitnessDaily = QUESTS.filter(q => q.daily);
+      const fitnessTodayPct = Math.round((fitnessDaily.filter(q => fitnessTodayLog.includes(q.id)).length / fitnessDaily.length) * 100);
+      const nutritionTodayPct = Math.round((nutritionTodayLog.length / TOTAL_NUTRITION_ITEMS) * 100);
+
+      const weekStart = new Date();
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      let fitnessWeekXp = 0, nutritionWeekXp = 0;
+      for (let d = 0; d < 7; d++) {
+        const date = addDays(weekStart, d);
+        if (date > new Date()) break;
+        const key = getDateKey(date);
+        const fLog = fitnessState.log[key] || [];
+        const nLog = nutritionState.log[key] || [];
+        fLog.forEach(qid => { const q = QUESTS.find(x => x.id === qid); if (q) fitnessWeekXp += q.xp; });
+        nLog.forEach(iid => { const i = ALL_NUTRITION_ITEMS.find(x => x.id === iid); if (i) nutritionWeekXp += i.xp; });
+      }
+
+      const combinedScore = Math.round((fitnessTodayPct + nutritionTodayPct) / 2);
+      const getGrade = (pct) => pct >= 90 ? "S" : pct >= 75 ? "A" : pct >= 60 ? "B" : pct >= 40 ? "C" : pct >= 20 ? "D" : "F";
+      const getGradeColor = (pct) => pct >= 90 ? "#c4b5fd" : pct >= 75 ? "#7c6dd8" : pct >= 60 ? "#5bafa0" : pct >= 40 ? "#e8a838" : pct >= 20 ? "#e05555" : "#6b7280";
+
+      return (
+        <div style={{
+          marginTop: 16, padding: "14px",
+          background: `linear-gradient(135deg, ${MAKO.abyss}90 0%, ${MAKO.bgCard}90 100%)`,
+          border: `1px solid ${MAKO.textMuted}25`, borderRadius: 12,
+        }}>
+          <div style={{ fontSize: "0.55rem", letterSpacing: "0.4em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 10, textAlign: "center" }}>
+            ⚡ COMBINED PERFORMANCE ⚡
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginBottom: 12 }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "0.5rem", color: MAKO.textMuted, letterSpacing: "0.15em", marginBottom: 2 }}>TODAY'S GRADE</div>
+              <div style={{
+                fontFamily: "'Orbitron', sans-serif", fontSize: "2rem", fontWeight: 900,
+                color: getGradeColor(combinedScore),
+                textShadow: `0 0 20px ${getGradeColor(combinedScore)}50`,
+              }}>{getGrade(combinedScore)}</div>
+            </div>
+            <div style={{ height: 40, width: 1, background: `${MAKO.textMuted}30` }} />
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: "0.5rem", color: MAKO.textMuted, letterSpacing: "0.15em", marginBottom: 2 }}>COMBINED</div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, color: MAKO.text }}>{combinedScore}%</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ flex: 1, padding: "10px", background: `${fitnessRank.color}10`, borderRadius: 8, border: `1px solid ${fitnessRank.color}20` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: "0.9rem" }}>⚔️</span>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, color: fitnessRank.vivid || fitnessRank.color, letterSpacing: "0.1em" }}>FITNESS</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: "0.55rem", color: MAKO.textDim }}>Today</span>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, color: fitnessTodayPct >= 80 ? MAKO.success : fitnessTodayPct >= 50 ? MAKO.warning : MAKO.textMuted }}>{fitnessTodayPct}%</span>
+              </div>
+              <div style={{ height: 3, background: `${MAKO.textMuted}20`, borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
+                <div style={{ height: "100%", width: `${fitnessTodayPct}%`, background: fitnessRank.vivid || fitnessRank.color, borderRadius: 2 }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.5rem", color: MAKO.textDim }}>
+                <span>Lv.{fitnessState.level} {fitnessRank.name}</span>
+                <span>{fitnessWeekXp} XP/wk</span>
+              </div>
+            </div>
+            <div style={{ flex: 1, padding: "10px", background: `${nutritionRank.color}10`, borderRadius: 8, border: `1px solid ${nutritionRank.color}20` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: "0.9rem" }}>🍽️</span>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, color: nutritionRank.vivid || nutritionRank.color, letterSpacing: "0.1em" }}>NUTRITION</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: "0.55rem", color: MAKO.textDim }}>Today</span>
+                <span style={{ fontSize: "0.65rem", fontWeight: 700, color: nutritionTodayPct >= 80 ? MAKO.success : nutritionTodayPct >= 50 ? MAKO.warning : MAKO.textMuted }}>{nutritionTodayPct}%</span>
+              </div>
+              <div style={{ height: 3, background: `${MAKO.textMuted}20`, borderRadius: 2, overflow: "hidden", marginBottom: 6 }}>
+                <div style={{ height: "100%", width: `${nutritionTodayPct}%`, background: nutritionRank.vivid || nutritionRank.color, borderRadius: 2 }} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.5rem", color: MAKO.textDim }}>
+                <span>Lv.{nutritionState.level} {nutritionRank.name}</span>
+                <span>{nutritionWeekXp} XP/wk</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 20, marginTop: 10, fontSize: "0.55rem" }}>
+            <div style={{ textAlign: "center" }}>
+              <span style={{ color: MAKO.textMuted }}>Fitness Streak </span>
+              <span style={{ color: fitnessState.streak > 0 ? MAKO.warning : MAKO.textMuted, fontWeight: 700 }}>{fitnessState.streak}{fitnessState.streak > 0 ? "🔥" : ""}</span>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <span style={{ color: MAKO.textMuted }}>Nutrition Streak </span>
+              <span style={{ color: nutritionState.streak > 0 ? MAKO.warning : MAKO.textMuted, fontWeight: 700 }}>{nutritionState.streak}{nutritionState.streak > 0 ? "🔥" : ""}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // MAIN APP
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    function App() {
+      const [mainTab, setMainTab] = useState("fitness");
+      const [fitnessState, fitnessDispatch] = useReducer(fitnessReducer, fitnessInitialState);
+      const [nutritionState, nutritionDispatch] = useReducer(nutritionReducer, nutritionInitialState);
+
+      useEffect(() => {
+        const saved = loadFitnessState();
+        fitnessDispatch({ type: "LOAD_STATE", payload: saved || {} });
+      }, []);
+
+      useEffect(() => {
+        if (fitnessState.loaded) saveFitnessState(fitnessState);
+      }, [fitnessState.level, fitnessState.xp, fitnessState.totalXp, fitnessState.log, fitnessState.weeklyGymLog, fitnessState.penalties, fitnessState.streak, fitnessState.loaded]);
+
+      useEffect(() => {
+        const saved = loadNutritionState();
+        nutritionDispatch({ type: "LOAD_STATE", payload: saved || {} });
+      }, []);
+
+      useEffect(() => {
+        if (nutritionState.loaded) saveNutritionState(nutritionState);
+      }, [nutritionState.level, nutritionState.xp, nutritionState.totalXp, nutritionState.log, nutritionState.penalties, nutritionState.streak, nutritionState.loaded]);
+
+      const today = getDateKey();
+      const fitnessTodayLog = fitnessState.log[today] || [];
+      const fitnessRank = getFitnessRank(fitnessState.level);
+      const nextFitnessRank = getNextFitnessRank(fitnessState.level);
+      const fitnessXpNeeded = getFitnessXpForLevel(fitnessState.level);
+      const fitnessXpPercent = Math.min((fitnessState.xp / fitnessXpNeeded) * 100, 100);
+      const dailyQuests = QUESTS.filter((q) => q.daily);
+      const completedDaily = dailyQuests.filter((q) => fitnessTodayLog.includes(q.id)).length;
+      const totalDaily = dailyQuests.length;
+      const weekKey = getWeekKey();
+      const gymThisWeek = fitnessState.weeklyGymLog[weekKey] || 0;
+      const quote = useMemo(() => getDailyQuote(), []);
+      const fitnessVib = getFitnessVibrancy(fitnessState.level);
+      const fitnessAccent = fitnessRank.vivid || fitnessRank.color;
+
+      const nutritionTodayLog = nutritionState.log[today] || [];
+      const nutritionRank = getNutritionRank(nutritionState.level);
+      const nextNutritionRank = getNextNutritionRank(nutritionState.level);
+      const nutritionXpNeeded = getNutritionXpForLevel(nutritionState.level);
+      const nutritionXpPercent = Math.min((nutritionState.xp / nutritionXpNeeded) * 100, 100);
+      const nutritionVib = getNutritionVibrancy(nutritionState.level);
+      const nutritionAccent = nutritionRank.vivid || nutritionRank.color;
+
+      const checkedMealCount = ALL_MEAL_ITEMS.filter(i => nutritionTodayLog.includes(i.id)).length;
+      const checkedHydration = HYDRATION.filter(h => nutritionTodayLog.includes(h.id)).length;
+      const checkedAlani = ALANI_RULES.filter(a => nutritionTodayLog.includes(a.id)).length;
+      const totalChecked = nutritionTodayLog.length;
+      const nutritionTodayPct = Math.round((totalChecked / TOTAL_NUTRITION_ITEMS) * 100);
+      const todayNutritionXp = nutritionTodayLog.reduce((sum, id) => {
+        const item = ALL_NUTRITION_ITEMS.find(i => i.id === id);
+        return sum + (item?.xp || 0);
+      }, 0);
+
+      const handleFitnessToggle = (questId, wasCompleted) => {
+        if (wasCompleted) fitnessDispatch({ type: "UNCOMPLETE_QUEST", questId });
+        else fitnessDispatch({ type: "COMPLETE_QUEST", questId });
+      };
+
+      const handleNutritionToggle = (itemId) => {
+        if (nutritionTodayLog.includes(itemId)) {
+          nutritionDispatch({ type: "UNCOMPLETE_ITEM", itemId });
+        } else {
+          nutritionDispatch({ type: "COMPLETE_ITEM", itemId });
+        }
+      };
+
+      const handleFitnessPenalty = () => {
+        const missed = dailyQuests.filter((q) => !fitnessTodayLog.includes(q.id)).length;
+        if (missed > 0) fitnessDispatch({ type: "APPLY_PENALTY", amount: DAILY_SKIP_PENALTY * missed });
+      };
+
+      const handleNutritionPenalty = () => {
+        const missed = TOTAL_NUTRITION_ITEMS - totalChecked;
+        const penaltyCount = Math.floor(missed / 3);
+        if (penaltyCount > 0) nutritionDispatch({ type: "APPLY_PENALTY", amount: NUTRITION_SKIP_PENALTY * penaltyCount });
+      };
+
+      const clearFitnessAnimations = () => fitnessDispatch({ type: "CLEAR_ANIMATIONS" });
+      const clearNutritionAnimations = () => nutritionDispatch({ type: "CLEAR_ANIMATIONS" });
+
+      if (!fitnessState.loaded || !nutritionState.loaded) {
+        return (
+          <div style={{ minHeight: "100vh", background: MAKO.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ color: MAKO.textDim, fontFamily: "'Rajdhani', sans-serif", fontSize: "1.1rem", letterSpacing: "0.3em" }}>INITIALIZING SYSTEM...</div>
+          </div>
+        );
+      }
+
+      const currentAccent = mainTab === "fitness" ? fitnessAccent : nutritionAccent;
+      const currentVib = mainTab === "fitness" ? fitnessVib : nutritionVib;
+
+      return (
+        <div style={{
+          minHeight: "100vh",
+          background: `linear-gradient(180deg, ${MAKO.bg} 0%, ${MAKO.bgCard} 50%, ${MAKO.bg} 100%)`,
+          color: MAKO.text, fontFamily: "'Rajdhani', sans-serif", position: "relative",
+        }}>
+          <div style={{ position: "fixed", inset: 0, opacity: 0.02, pointerEvents: "none", backgroundImage: `linear-gradient(${currentAccent}20 1px, transparent 1px), linear-gradient(90deg, ${currentAccent}20 1px, transparent 1px)`, backgroundSize: "60px 60px" }} />
+          <div style={{ position: "fixed", top: -200, left: "50%", transform: "translateX(-50%)", width: 350 + currentVib * 250, height: 350 + currentVib * 250, borderRadius: "50%", background: `radial-gradient(circle, ${currentAccent} 0%, transparent 70%)`, opacity: 0.08 + currentVib * 0.08, pointerEvents: "none", transition: "all 0.5s ease" }} />
+
+          {fitnessState.animatingXp && fitnessState.xpGain !== 0 && <XpBurst amount={fitnessState.xpGain} onDone={clearFitnessAnimations} color={fitnessAccent} />}
+          {fitnessState.showLevelUp && <LevelUpOverlay level={fitnessState.level} onDone={clearFitnessAnimations} rank={fitnessRank} type="fitness" />}
+          {fitnessState.showPenalty && <PenaltyOverlay amount={fitnessState.penaltyAmount} onDone={clearFitnessAnimations} type="fitness" />}
+          {nutritionState.animatingXp && nutritionState.xpGain !== 0 && <XpBurst amount={nutritionState.xpGain} onDone={clearNutritionAnimations} color={nutritionAccent} />}
+          {nutritionState.showLevelUp && <LevelUpOverlay level={nutritionState.level} onDone={clearNutritionAnimations} rank={nutritionRank} type="nutrition" />}
+          {nutritionState.showPenalty && <PenaltyOverlay amount={nutritionState.penaltyAmount} onDone={clearNutritionAnimations} type="nutrition" />}
+
+          <div style={{ maxWidth: 440, margin: "0 auto", padding: "14px 12px 30px" }}>
+            {/* Main Tab Switcher - Sticky with fade */}
+            <div style={{
+              position: "sticky", top: 0, zIndex: 100,
+              paddingTop: 8, paddingBottom: 45, marginBottom: -30,
+              background: `linear-gradient(to bottom, ${MAKO.bg} 0%, ${MAKO.bg} 45%, rgba(14,18,37,0.9) 60%, rgba(14,18,37,0.6) 75%, rgba(14,18,37,0.2) 90%, transparent 100%)`,
+            }}>
+              <div style={{
+                display: "flex", gap: 0, position: "relative",
+                background: `${MAKO.abyss}f5`,
+                borderRadius: 10, padding: 3,
+                border: `1px solid ${MAKO.textMuted}20`,
+                backdropFilter: "blur(12px)",
+                boxShadow: `0 4px 20px ${MAKO.bg}90`,
+              }}>
+                {/* Sliding indicator */}
+                <div style={{
+                  position: "absolute",
+                  top: 3, bottom: 3,
+                  left: mainTab === "fitness" ? 3 : "calc(50% + 1.5px)",
+                  width: "calc(50% - 4.5px)",
+                  background: `linear-gradient(135deg, ${mainTab === "fitness" ? fitnessAccent : nutritionAccent}15, ${mainTab === "fitness" ? fitnessAccent : nutritionAccent}08)`,
+                  border: `1px solid ${mainTab === "fitness" ? fitnessAccent : nutritionAccent}30`,
+                  borderRadius: 8,
+                  transition: "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+                  boxShadow: `0 0 15px ${mainTab === "fitness" ? fitnessAccent : nutritionAccent}15`,
+                }} />
+                {[
+                  { id: "fitness", label: "FITNESS", icon: "⚔️", color: fitnessRank.vivid || fitnessRank.color },
+                  { id: "nutrition", label: "NUTRITION", icon: "🍽️", color: nutritionRank.vivid || nutritionRank.color },
+                ].map((tab) => (
+                  <button key={tab.id}
+                    onClick={() => setMainTab(tab.id)}
+                    style={{
+                      flex: 1, padding: "10px 0",
+                      background: "transparent",
+                      border: "1px solid transparent",
+                      borderRadius: 8, cursor: "pointer",
+                      fontFamily: "'Orbitron', sans-serif", fontWeight: 700,
+                      fontSize: "0.7rem", letterSpacing: "0.1em",
+                      color: mainTab === tab.id ? tab.color : MAKO.textMuted,
+                      transition: "color 0.3s ease, text-shadow 0.3s ease",
+                      textShadow: mainTab === tab.id ? `0 0 12px ${tab.color}40` : "none",
+                      position: "relative", zIndex: 1,
+                    }}
+                  >{tab.icon} {tab.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* FITNESS TAB */}
+            {mainTab === "fitness" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 14, padding: "14px 14px 12px", background: `linear-gradient(160deg, ${MAKO.bgLight}cc 0%, ${MAKO.bgCard}cc 50%, ${MAKO.bg}cc 100%)`, border: `1px solid ${MAKO.textMuted}20`, borderRadius: 12, position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: -30, left: "50%", transform: "translateX(-50%)", width: 160 + fitnessVib * 60, height: 160 + fitnessVib * 60, borderRadius: "50%", background: `radial-gradient(circle, ${fitnessAccent} 0%, transparent 60%)`, opacity: 0.1 + fitnessVib * 0.1, pointerEvents: "none" }} />
+                  <ShadowMonarchArt rank={fitnessRank} level={fitnessState.level} type="fitness" />
+                  <div style={{ fontSize: "0.5rem", letterSpacing: "0.5em", color: MAKO.textMuted, textTransform: "uppercase", marginTop: 4, marginBottom: 3 }}>HUNTER STATUS</div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                    <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: "1.8rem", fontWeight: 900, color: fitnessAccent, textShadow: `0 0 16px ${fitnessRank.glow}`, lineHeight: 1 }}>{fitnessRank.name}</div>
+                    <div style={{ fontSize: "0.62rem", color: MAKO.textDim, textAlign: "left", lineHeight: 1.2 }}>
+                      <div>RANK</div>
+                      <div style={{ color: MAKO.text }}>{fitnessRank.title}</div>
+                    </div>
+                  </div>
+                  {nextFitnessRank && <div style={{ fontSize: "0.58rem", color: MAKO.textMuted, marginTop: 2 }}>Next: <span style={{ color: nextFitnessRank.vivid || nextFitnessRank.color }}>{nextFitnessRank.name}</span> at Lv.{nextFitnessRank.minLevel}</div>}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.58rem", color: MAKO.textDim, marginBottom: 3 }}>
+                      <span>EXP</span>
+                      <span>{fitnessState.xp.toLocaleString()} / {fitnessXpNeeded.toLocaleString()}</span>
+                    </div>
+                    <div style={{ height: 4, background: `${MAKO.textMuted}18`, borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${fitnessXpPercent}%`, background: `linear-gradient(90deg, ${vibrateColor(MAKO.teal, fitnessVib)}, ${vibrateColor(MAKO.ocean, fitnessVib)})`, borderRadius: 2, transition: "width 0.6s ease" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 10, fontSize: "0.62rem" }}>
+                    {[
+                      { label: "XP", value: fitnessState.totalXp.toLocaleString(), color: MAKO.text },
+                      { label: "STREAK", value: `${fitnessState.streak}${fitnessState.streak > 0 ? "🔥" : ""}`, color: fitnessState.streak > 0 ? MAKO.warning : MAKO.textDim },
+                      { label: "PENALTY", value: fitnessState.penalties, color: fitnessState.penalties > 0 ? MAKO.danger : MAKO.textDim },
+                    ].map((s, i) => (
+                      <div key={i} style={{ textAlign: "center" }}>
+                        <div style={{ color: MAKO.textMuted, letterSpacing: "0.08em", marginBottom: 1, fontSize: "0.5rem" }}>{s.label}</div>
+                        <div style={{ color: s.color, fontWeight: 700, fontSize: "0.82rem" }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ padding: "8px 12px", marginBottom: 12, background: `linear-gradient(135deg, ${MAKO.bgCard}88 0%, ${MAKO.bg}88 100%)`, border: `1px solid ${MAKO.textMuted}15`, borderRadius: 8, borderLeft: `3px solid ${fitnessAccent}40` }}>
+                  <div style={{ fontSize: "0.72rem", color: MAKO.text, fontStyle: "italic", lineHeight: 1.4, fontWeight: 500 }}>"{quote.text}"</div>
+                  <div style={{ fontSize: "0.5rem", color: MAKO.textMuted, marginTop: 2, letterSpacing: "0.1em", textTransform: "uppercase" }}>— THE SYSTEM {quote.type === "funny" ? "🗿" : "⚔️"}</div>
+                </div>
+
+                <div style={{ display: "flex", gap: 0, marginBottom: 12, background: `${MAKO.bgCard}80`, borderRadius: 8, padding: 2, border: `1px solid ${MAKO.textMuted}15` }}>
+                  {[{ id: "quests", label: "QUESTS", icon: "⚔️" }, { id: "progress", label: "PROGRESS", icon: "📊" }].map((tab) => (
+                    <button key={tab.id}
+                      onClick={() => fitnessDispatch({ type: "SET_FITNESS_TAB", tab: tab.id })}
+                      style={{
+                        flex: 1, padding: "7px 0",
+                        background: fitnessState.fitnessTab === tab.id ? `linear-gradient(135deg, ${fitnessAccent}12, ${fitnessAccent}06)` : "transparent",
+                        border: fitnessState.fitnessTab === tab.id ? `1px solid ${fitnessAccent}28` : "1px solid transparent",
+                        borderRadius: 6, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", fontWeight: 700,
+                        fontSize: "0.68rem", letterSpacing: "0.1em",
+                        color: fitnessState.fitnessTab === tab.id ? fitnessAccent : MAKO.textMuted, transition: "all 0.2s",
+                      }}
+                    >{tab.icon} {tab.label}</button>
+                  ))}
+                </div>
+
+                {fitnessState.fitnessTab === "quests" && (
+                  <>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: "0.55rem", letterSpacing: "0.3em", color: MAKO.textMuted, textTransform: "uppercase" }}>DAILY QUESTS</div>
+                        <div style={{ fontSize: "0.7rem", color: completedDaily === totalDaily ? MAKO.success : MAKO.textDim, marginTop: 1 }}>
+                          {completedDaily === totalDaily ? "✦ All cleared" : `${completedDaily}/${totalDaily} completed`}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: "0.58rem", color: MAKO.textMuted }}>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
+                      {QUESTS.map((quest) => <QuestCard key={quest.id} quest={quest} completed={fitnessTodayLog.includes(quest.id)} onToggle={handleFitnessToggle} rank={fitnessRank} vib={fitnessVib} />)}
+                    </div>
+                    <div style={{ padding: "10px 12px", background: `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`, border: `1px solid ${MAKO.textMuted}20`, borderRadius: 10, marginBottom: 12 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontSize: "0.55rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase" }}>WEEKLY RAIDS</div>
+                          <div style={{ fontSize: "1rem", fontWeight: 800, marginTop: 2, color: gymThisWeek >= 3 ? MAKO.success : gymThisWeek > 0 ? MAKO.warning : MAKO.textMuted }}>{gymThisWeek} / 3</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {[0, 1, 2].map((i) => (
+                            <div key={i} style={{
+                              width: 20, height: 20, borderRadius: 5,
+                              background: i < gymThisWeek ? `linear-gradient(135deg, ${vibrateColor(MAKO.teal, fitnessVib)}, ${vibrateColor(MAKO.ocean, fitnessVib)})` : `${MAKO.textMuted}12`,
+                              border: i < gymThisWeek ? `1px solid ${MAKO.success}40` : `1px solid ${MAKO.textMuted}20`,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: "0.6rem", color: i < gymThisWeek ? "#fff" : MAKO.textMuted, fontWeight: 700,
+                            }}>{i < gymThisWeek ? "✓" : ""}</div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    {completedDaily < totalDaily && (
+                      <div style={{ textAlign: "center", marginBottom: 12 }}>
+                        <div style={{ fontSize: "0.55rem", color: MAKO.danger, letterSpacing: "0.15em", marginBottom: 5, animation: "pulse 2s infinite" }}>
+                          {totalDaily - completedDaily} QUEST{totalDaily - completedDaily > 1 ? "S" : ""} REMAINING
+                        </div>
+                        <button onClick={handleFitnessPenalty} style={{
+                          background: `${MAKO.danger}12`, border: `1px solid ${MAKO.danger}30`,
+                          borderRadius: 6, padding: "7px 16px", color: MAKO.danger,
+                          fontFamily: "'Rajdhani', sans-serif", fontWeight: 700,
+                          fontSize: "0.68rem", letterSpacing: "0.08em", cursor: "pointer", transition: "all 0.2s",
+                        }}>END DAY ({DAILY_SKIP_PENALTY * (totalDaily - completedDaily)} XP)</button>
+                      </div>
+                    )}
+                    <div style={{ padding: "10px 12px", background: `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`, border: `1px solid ${MAKO.textMuted}20`, borderRadius: 10 }}>
+                      <div style={{ fontSize: "0.55rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 6 }}>RANK PROGRESSION</div>
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                        {FITNESS_RANKS.map((r) => {
+                          const isCurrent = r.name === fitnessRank.name;
+                          const isAchieved = fitnessState.level >= r.minLevel;
+                          return (
+                            <div key={r.name} style={{
+                              padding: "3px 8px", borderRadius: 4,
+                              background: isCurrent ? `${r.vivid || r.color}18` : isAchieved ? `${MAKO.textMuted}10` : `${MAKO.bg}cc`,
+                              border: isCurrent ? `1px solid ${r.vivid || r.color}40` : `1px solid ${MAKO.textMuted}12`,
+                              color: isCurrent ? (r.vivid || r.color) : isAchieved ? MAKO.textDim : MAKO.textMuted,
+                              fontWeight: 700, fontSize: "0.65rem", fontFamily: "'Orbitron', sans-serif",
+                              boxShadow: isCurrent ? `0 0 6px ${r.glow}` : "none",
+                            }}>{r.name}</div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {fitnessState.fitnessTab === "progress" && (
+                  <>
+                    <div style={{ padding: "12px", marginBottom: 10, background: `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`, border: `1px solid ${MAKO.textMuted}20`, borderRadius: 10 }}>
+                      <div style={{ fontSize: "0.55rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 8 }}>TRAINING HEATMAP</div>
+                      <Heatmap log={fitnessState.log} totalItems={TOTAL_QUESTS} accentColor={MAKO.teal} vib={fitnessVib} />
+                    </div>
+                    <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
+                      {(() => {
+                        const totalDays = Object.keys(fitnessState.log).length;
+                        const perfectDays = Object.entries(fitnessState.log).filter(([, v]) => QUESTS.filter(q => q.daily).every(q => v.includes(q.id))).length;
+                        const totalClears = Object.values(fitnessState.log).reduce((s, v) => s + v.length, 0);
+                        return [
+                          { label: "ACTIVE", value: totalDays, color: MAKO.text },
+                          { label: "PERFECT", value: perfectDays, color: MAKO.warning },
+                          { label: "CLEARS", value: totalClears, color: MAKO.success },
+                        ].map((stat, i) => (
+                          <div key={i} style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: `linear-gradient(135deg, ${MAKO.bgCard}aa 0%, ${MAKO.bg}aa 100%)`, border: `1px solid ${MAKO.textMuted}15`, borderRadius: 8 }}>
+                            <div style={{ fontSize: "0.48rem", letterSpacing: "0.12em", color: MAKO.textMuted, marginBottom: 2 }}>{stat.label}</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 800, color: stat.color }}>{stat.value}</div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </>
+                )}
+                <PerformanceOverview fitnessState={fitnessState} nutritionState={nutritionState} fitnessRank={fitnessRank} nutritionRank={nutritionRank} />
+              </>
+            )}
+
+            {/* NUTRITION TAB */}
+            {mainTab === "nutrition" && (
+              <>
+                <div style={{ textAlign: "center", marginBottom: 14, padding: "14px 12px", background: `linear-gradient(160deg, rgba(30,22,18,0.9) 0%, rgba(24,18,14,0.9) 100%)`, border: `1px solid ${nutritionAccent}25`, borderRadius: 12, position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", top: -30, left: "50%", transform: "translateX(-50%)", width: 150, height: 150, borderRadius: "50%", background: `radial-gradient(circle, ${nutritionAccent}20 0%, transparent 60%)`, pointerEvents: "none" }} />
+                  <ShadowMonarchArt rank={nutritionRank} level={nutritionState.level} type="nutrition" />
+                  <div style={{ fontSize: "0.5rem", letterSpacing: "0.5em", color: MAKO.textMuted, textTransform: "uppercase", marginTop: 4, marginBottom: 3 }}>NUTRITION STATUS</div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                    <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: "1.8rem", fontWeight: 900, color: nutritionAccent, textShadow: `0 0 16px ${nutritionRank.glow}`, lineHeight: 1 }}>{nutritionRank.name}</div>
+                    <div style={{ fontSize: "0.62rem", color: MAKO.textDim, textAlign: "left", lineHeight: 1.2 }}>
+                      <div>RANK</div>
+                      <div style={{ color: MAKO.text }}>{nutritionRank.title}</div>
+                    </div>
+                  </div>
+                  {nextNutritionRank && <div style={{ fontSize: "0.58rem", color: MAKO.textMuted, marginTop: 2 }}>Next: <span style={{ color: nextNutritionRank.vivid || nextNutritionRank.color }}>{nextNutritionRank.name}</span> at Lv.{nextNutritionRank.minLevel}</div>}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.58rem", color: MAKO.textDim, marginBottom: 3 }}>
+                      <span>EXP</span>
+                      <span>{nutritionState.xp.toLocaleString()} / {nutritionXpNeeded.toLocaleString()}</span>
+                    </div>
+                    <div style={{ height: 4, background: `${MAKO.textMuted}18`, borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${nutritionXpPercent}%`, background: `linear-gradient(90deg, ${vibrateColor("#ea580c", nutritionVib)}, ${vibrateColor("#22c55e", nutritionVib)})`, borderRadius: 2, transition: "width 0.6s ease" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 16, marginTop: 10, fontSize: "0.62rem" }}>
+                    {[
+                      { label: "XP", value: nutritionState.totalXp.toLocaleString(), color: MAKO.text },
+                      { label: "TODAY", value: `${todayNutritionXp}/${MAX_DAILY_NUTRITION_XP}`, color: nutritionAccent },
+                      { label: "STREAK", value: `${nutritionState.streak}${nutritionState.streak > 0 ? "🔥" : ""}`, color: nutritionState.streak > 0 ? MAKO.warning : MAKO.textDim },
+                    ].map((s, i) => (
+                      <div key={i} style={{ textAlign: "center" }}>
+                        <div style={{ color: MAKO.textMuted, letterSpacing: "0.08em", marginBottom: 1, fontSize: "0.5rem" }}>{s.label}</div>
+                        <div style={{ color: s.color, fontWeight: 700, fontSize: "0.82rem" }}>{s.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 0, marginBottom: 12, background: `rgba(30,22,18,0.6)`, borderRadius: 8, padding: 2, border: `1px solid ${nutritionAccent}20` }}>
+                  {[
+                    { id: "meals", label: "MEALS", icon: "🍽️", count: `${checkedMealCount}/${ALL_MEAL_ITEMS.length}` },
+                    { id: "hydration", label: "WATER", icon: "💧", count: `${checkedHydration}/${HYDRATION.length}` },
+                    { id: "rules", label: "RULES", icon: "⚠️", count: `${checkedAlani}/${ALANI_RULES.length}` },
+                    { id: "progress", label: "STATS", icon: "📊" },
+                  ].map(t => (
+                    <button key={t.id} onClick={() => nutritionDispatch({ type: "SET_NUTRITION_TAB", tab: t.id })} style={{
+                      flex: 1, padding: "7px 0",
+                      background: nutritionState.nutritionTab === t.id ? `linear-gradient(135deg, ${nutritionAccent}18, ${nutritionAccent}08)` : "transparent",
+                      border: nutritionState.nutritionTab === t.id ? `1px solid ${nutritionAccent}35` : "1px solid transparent",
+                      borderRadius: 6, cursor: "pointer", fontFamily: "'Rajdhani', sans-serif", fontWeight: 700,
+                      fontSize: "0.62rem", letterSpacing: "0.06em",
+                      color: nutritionState.nutritionTab === t.id ? nutritionAccent : MAKO.textMuted, transition: "all 0.2s",
+                    }}>{t.icon} {t.count && <span style={{ opacity: 0.7 }}>{t.count}</span>}</button>
+                  ))}
+                </div>
+
+                {nutritionState.nutritionTab === "meals" && (
+                  <div>
+                    {MEALS.map(meal => <MealSection key={meal.id} meal={meal} todayLog={nutritionTodayLog} onToggle={handleNutritionToggle} />)}
+                    {nutritionTodayPct < 100 && (
+                      <div style={{ textAlign: "center", marginTop: 10 }}>
+                        <div style={{ fontSize: "0.55rem", color: MAKO.danger, letterSpacing: "0.15em", marginBottom: 5, animation: "pulse 2s infinite" }}>
+                          {TOTAL_NUTRITION_ITEMS - totalChecked} ITEMS REMAINING
+                        </div>
+                        <button onClick={handleNutritionPenalty} style={{
+                          background: `${MAKO.danger}12`, border: `1px solid ${MAKO.danger}30`,
+                          borderRadius: 6, padding: "7px 16px", color: MAKO.danger,
+                          fontFamily: "'Rajdhani', sans-serif", fontWeight: 700,
+                          fontSize: "0.68rem", letterSpacing: "0.08em", cursor: "pointer", transition: "all 0.2s",
+                        }}>END DAY ({NUTRITION_SKIP_PENALTY * Math.floor((TOTAL_NUTRITION_ITEMS - totalChecked) / 3)} XP)</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {nutritionState.nutritionTab === "hydration" && (
+                  <div style={{ background: `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`, border: `1px solid ${MAKO.textMuted}18`, borderRadius: 10, overflow: "hidden" }}>
+                    <div style={{ padding: "10px 12px", borderBottom: `1px solid ${MAKO.textMuted}12`, display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ fontSize: "1.1rem" }}>💧</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: "0.88rem", color: MAKO.hydra }}>Hydration Protocol</div>
+                        <div style={{ fontSize: "0.55rem", color: MAKO.textDim, letterSpacing: "0.06em" }}>TARGET: 80 OZ / DAY</div>
+                      </div>
+                      <div style={{ marginLeft: "auto", fontSize: "0.95rem", fontWeight: 800, color: checkedHydration === 5 ? MAKO.success : MAKO.hydra }}>{checkedHydration * 16} oz</div>
+                    </div>
+                    <div style={{ padding: "3px 2px" }}>
+                      {HYDRATION.map(h => (
+                        <div key={h.id} onClick={() => handleNutritionToggle(h.id)} style={{
+                          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", cursor: "pointer", transition: "all 0.2s",
+                          background: nutritionTodayLog.includes(h.id) ? `${MAKO.hydra}08` : "transparent",
+                          borderLeft: nutritionTodayLog.includes(h.id) ? `2px solid ${MAKO.hydra}50` : "2px solid transparent", borderRadius: 6,
+                        }}>
+                          <div style={{
+                            width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                            border: nutritionTodayLog.includes(h.id) ? `2px solid ${MAKO.hydra}` : `2px solid ${MAKO.textMuted}50`,
+                            background: nutritionTodayLog.includes(h.id) ? `${MAKO.hydra}20` : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: "0.6rem", color: MAKO.hydra, transition: "all 0.2s",
+                          }}>{nutritionTodayLog.includes(h.id) ? "✓" : ""}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: "0.78rem", fontWeight: 600, color: nutritionTodayLog.includes(h.id) ? `${MAKO.hydra}bb` : MAKO.text, textDecoration: nutritionTodayLog.includes(h.id) ? "line-through" : "none", textDecorationColor: `${MAKO.hydra}40` }}>{h.text}</div>
+                          </div>
+                          <div style={{ fontSize: "0.58rem", color: MAKO.textMuted, fontWeight: 600 }}>{h.time}</div>
+                          <div style={{ fontSize: "0.65rem", color: nutritionTodayLog.includes(h.id) ? `${MAKO.hydra}60` : MAKO.hydra, fontWeight: 700 }}>{nutritionTodayLog.includes(h.id) ? "✓" : `+${h.xp}`}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {nutritionState.nutritionTab === "rules" && (
+                  <div>
+                    <div style={{ background: `linear-gradient(135deg, rgba(30,22,18,0.85) 0%, rgba(20,16,12,0.9) 100%)`, border: `1px solid ${nutritionAccent}25`, borderRadius: 10, overflow: "hidden", marginBottom: 10 }}>
+                      <div style={{ padding: "8px 12px", borderBottom: `1px solid ${nutritionAccent}15`, display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ fontSize: "1rem" }}>⚡</div>
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: "0.88rem", color: nutritionAccent }}>Alani Nu Protocol</div>
+                          <div style={{ fontSize: "0.55rem", color: MAKO.textDim, letterSpacing: "0.06em" }}>CAFFEINE MANAGEMENT</div>
+                        </div>
+                      </div>
+                      <div style={{ padding: "3px 2px" }}>
+                        {ALANI_RULES.map(a => <DietCheckItem key={a.id} item={a} checked={nutritionTodayLog.includes(a.id)} onToggle={handleNutritionToggle} showStatus={false} />)}
+                      </div>
+                    </div>
+                    <div style={{ padding: "10px 12px", background: `linear-gradient(135deg, rgba(30,22,18,0.85) 0%, rgba(20,16,12,0.9) 100%)`, border: `1px solid ${nutritionAccent}20`, borderRadius: 10 }}>
+                      <div style={{ fontSize: "0.55rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 6 }}>NUTRITION RANKS</div>
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                        {NUTRITION_RANKS.map((r) => {
+                          const isCurrent = r.name === nutritionRank.name;
+                          const isAchieved = nutritionState.level >= r.minLevel;
+                          return (
+                            <div key={r.name} style={{
+                              padding: "3px 8px", borderRadius: 4,
+                              background: isCurrent ? `${r.vivid || r.color}18` : isAchieved ? `${MAKO.textMuted}10` : `${MAKO.bg}cc`,
+                              border: isCurrent ? `1px solid ${r.vivid || r.color}40` : `1px solid ${MAKO.textMuted}12`,
+                              color: isCurrent ? (r.vivid || r.color) : isAchieved ? MAKO.textDim : MAKO.textMuted,
+                              fontWeight: 700, fontSize: "0.65rem", fontFamily: "'Orbitron', sans-serif",
+                              boxShadow: isCurrent ? `0 0 6px ${r.glow}` : "none",
+                            }}>{r.name}</div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {nutritionState.nutritionTab === "progress" && (
+                  <>
+                    <div style={{ padding: "12px", marginBottom: 10, background: `linear-gradient(135deg, rgba(30,22,18,0.85) 0%, rgba(20,16,12,0.9) 100%)`, border: `1px solid ${nutritionAccent}20`, borderRadius: 10 }}>
+                      <div style={{ fontSize: "0.55rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 8 }}>NUTRITION HEATMAP</div>
+                      <Heatmap log={nutritionState.log} totalItems={TOTAL_NUTRITION_ITEMS} accentColor={nutritionAccent} vib={nutritionVib} />
+                    </div>
+                    <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
+                      {(() => {
+                        const totalDays = Object.keys(nutritionState.log).length;
+                        const perfectDays = Object.entries(nutritionState.log).filter(([, v]) => v.length >= TOTAL_NUTRITION_ITEMS).length;
+                        const totalChecks = Object.values(nutritionState.log).reduce((s, v) => s + v.length, 0);
+                        return [
+                          { label: "ACTIVE", value: totalDays, color: MAKO.text },
+                          { label: "PERFECT", value: perfectDays, color: MAKO.warning },
+                          { label: "CHECKS", value: totalChecks, color: MAKO.success },
+                        ].map((stat, i) => (
+                          <div key={i} style={{ flex: 1, textAlign: "center", padding: "8px 4px", background: `linear-gradient(135deg, ${MAKO.bgCard}aa 0%, ${MAKO.bg}aa 100%)`, border: `1px solid ${MAKO.textMuted}15`, borderRadius: 8 }}>
+                            <div style={{ fontSize: "0.48rem", letterSpacing: "0.12em", color: MAKO.textMuted, marginBottom: 2 }}>{stat.label}</div>
+                            <div style={{ fontSize: "1rem", fontWeight: 800, color: stat.color }}>{stat.value}</div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </>
+                )}
+                <PerformanceOverview fitnessState={fitnessState} nutritionState={nutritionState} fitnessRank={fitnessRank} nutritionRank={nutritionRank} />
+              </>
+            )}
+
+            <div style={{ textAlign: "center", marginTop: 16, fontSize: "0.5rem", color: MAKO.textMuted, letterSpacing: "0.15em" }}>
+              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>

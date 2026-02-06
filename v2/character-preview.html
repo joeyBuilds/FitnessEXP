@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shadow Monarch - Character Preview</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Rajdhani', sans-serif; background: #0e1225; color: #d0dde8; min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState } = React;
+
+    const MAKO = {
+      bg: "#0e1225", bgCard: "#121830", bgLight: "#161d3a",
+      abyss: "#2a2550", navy: "#3b4a8a",
+      text: "#d0dde8", textDim: "#5a6b84", textMuted: "#384560",
+    };
+
+    const FITNESS_RANKS = [
+      { name: "E", minLevel: 1, color: "#8a9a94", glow: "rgba(138,154,148,0.15)", title: "Weakest Hunter", vivid: "#c1e0d6" },
+      { name: "D", minLevel: 5, color: "#5bafa0", glow: "rgba(91,175,160,0.25)", title: "Aspiring Hunter", vivid: "#6ee8d4" },
+      { name: "C", minLevel: 12, color: "#5d96a0", glow: "rgba(93,150,160,0.3)", title: "Proven Hunter", vivid: "#6dc8dd" },
+      { name: "B", minLevel: 22, color: "#2d6e8a", glow: "rgba(45,110,138,0.35)", title: "Elite Hunter", vivid: "#38b4f0" },
+      { name: "A", minLevel: 35, color: "#4a5cb0", glow: "rgba(74,92,176,0.45)", title: "Shadow Soldier", vivid: "#6b80f0" },
+      { name: "S", minLevel: 50, color: "#7c6dd8", glow: "rgba(124,109,216,0.5)", title: "Shadow Monarch", vivid: "#a78bfa" },
+      { name: "S+", minLevel: 75, color: "#a78bfa", glow: "rgba(167,139,250,0.55)", title: "Sovereign", vivid: "#c4b5fd" },
+      { name: "National", minLevel: 100, color: "#c4b5fd", glow: "rgba(196,181,253,0.65)", title: "Absolute Being", vivid: "#e2d8ff" },
+    ];
+
+    function getFitnessRankIndex(level) {
+      return FITNESS_RANKS.reduce((idx, r, i) => level >= r.minLevel ? i : idx, 0);
+    }
+
+    function ShadowMonarchArt({ rank, level, size = 150 }) {
+      const ri = getFitnessRankIndex(level);
+      const vib = Math.min(ri / 7, 1);
+      const eyeColor = rank.vivid || rank.color;
+      const auraOpacity = 0.08 + vib * 0.5;
+      const armorOpacity = 0.15 + vib * 0.55;
+      const wispXs = ri >= 4 ? [55, 70, 90, 110, 130] : ri >= 2 ? [60, 80, 110, 130] : [70, 100, 130];
+      const eyeSize = 3.5 + vib * 2;
+      const crestOpacity = 0.3 + vib * 0.6;
+      const showSword = ri >= 3;
+      const showCrown = ri >= 5;
+      const showWings = ri >= 6;
+      const uid = `char-${level}`;
+
+      return (
+        <svg viewBox="0 0 200 230" width={size} height={size * 1.15} style={{ display: "block", margin: "0 auto" }}>
+          <defs>
+            <radialGradient id={`aura-${uid}`} cx="50%" cy="42%" r="50%">
+              <stop offset="0%" stopColor={eyeColor} stopOpacity={auraOpacity} />
+              <stop offset="60%" stopColor={rank.color} stopOpacity={auraOpacity * 0.3} />
+              <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient id={`bodyGrad-${uid}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={vib > 0.5 ? MAKO.navy : MAKO.abyss} />
+              <stop offset="100%" stopColor={MAKO.bg} />
+            </linearGradient>
+            <filter id={`glow-${uid}`}>
+              <feGaussianBlur stdDeviation={2 + vib * 3} result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+          </defs>
+          <ellipse cx="100" cy="100" rx={85 + vib * 15} ry={95 + vib * 15} fill={`url(#aura-${uid})`} />
+          {showWings && (
+            <g opacity={0.15 + vib * 0.2} filter={`url(#glow-${uid})`}>
+              <path d="M45 90 Q20 60 15 35 Q25 55 50 70 Z" fill={eyeColor} opacity="0.5" />
+              <path d="M155 90 Q180 60 185 35 Q175 55 150 70 Z" fill={eyeColor} opacity="0.5" />
+            </g>
+          )}
+          <path d="M100 40 C65 40 45 70 45 105 C45 145 60 175 75 200 L125 200 C140 175 155 145 155 105 C155 70 135 40 100 40Z" fill={`url(#bodyGrad-${uid})`} opacity={0.8 + vib * 0.15} />
+          <g opacity={armorOpacity}>
+            <path d="M85 75 L80 125 M115 75 L120 125" stroke={eyeColor} strokeWidth={0.8 + vib} fill="none" />
+            <path d="M75 135 L100 152 L125 135" stroke={eyeColor} strokeWidth={0.8 + vib} fill="none" />
+          </g>
+          {showSword && (
+            <g opacity={0.3 + vib * 0.4} filter={`url(#glow-${uid})`}>
+              <line x1="155" y1="55" x2="170" y2="175" stroke={eyeColor} strokeWidth={1.5 + vib} strokeLinecap="round" />
+            </g>
+          )}
+          {showCrown && (
+            <g filter={`url(#glow-${uid})`} opacity={0.4 + vib * 0.4}>
+              <path d="M82 30 L88 20 L94 28 L100 15 L106 28 L112 20 L118 30" fill="none" stroke={eyeColor} strokeWidth={1 + vib} />
+            </g>
+          )}
+          <path d="M100 35 C78 35 62 52 62 72 C62 92 78 100 100 100 C122 100 138 92 138 72 C138 52 122 35 100 35Z" fill={MAKO.abyss} stroke={eyeColor} strokeWidth={0.3 + vib * 0.7} opacity={0.75 + vib * 0.2} />
+          {!showCrown && (
+            <>
+              <path d="M100 28 L95 45 L100 40 L105 45 Z" fill={eyeColor} opacity={crestOpacity} />
+              <path d="M80 50 L65 38" stroke={eyeColor} strokeWidth={1 + vib} opacity={crestOpacity * 0.7} strokeLinecap="round" />
+              <path d="M120 50 L135 38" stroke={eyeColor} strokeWidth={1 + vib} opacity={crestOpacity * 0.7} strokeLinecap="round" />
+            </>
+          )}
+          <g filter={`url(#glow-${uid})`}>
+            <ellipse cx="87" cy="68" rx={5 + vib * 1.5} ry={eyeSize} fill={eyeColor} opacity={0.7 + vib * 0.3} />
+            <ellipse cx="113" cy="68" rx={5 + vib * 1.5} ry={eyeSize} fill={eyeColor} opacity={0.7 + vib * 0.3} />
+          </g>
+          {wispXs.map((x, i) => (
+            <g key={i} opacity={0.08 + vib * 0.15}>
+              <path d={`M${x} 200 Q${x-5} 178 ${x+3} 162 Q${x+8} 146 ${x} 130`} stroke={eyeColor} strokeWidth={1 + vib * 0.8} fill="none" strokeLinecap="round" />
+            </g>
+          ))}
+          <text x="100" y="225" textAnchor="middle" fill={eyeColor} fontSize="10" fontFamily="'Orbitron', monospace" opacity={0.3 + vib * 0.4} letterSpacing="3">
+            LV.{level}
+          </text>
+        </svg>
+      );
+    }
+
+    function App() {
+      const [hoveredRank, setHoveredRank] = useState(null);
+
+      return (
+        <div style={{ padding: "30px 20px", maxWidth: 1200, margin: "0 auto" }}>
+          <h1 style={{
+            fontFamily: "'Orbitron', sans-serif",
+            fontSize: "1.8rem",
+            textAlign: "center",
+            marginBottom: 8,
+            background: "linear-gradient(135deg, #c4b5fd, #7c6dd8)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            letterSpacing: "0.1em"
+          }}>
+            SHADOW MONARCH EVOLUTION
+          </h1>
+          <p style={{ textAlign: "center", color: MAKO.textDim, marginBottom: 30, fontSize: "0.9rem" }}>
+            Character progression as you level up through the ranks
+          </p>
+
+          {/* Features Legend */}
+          <div style={{
+            display: "flex",
+            justifyContent: "center",
+            gap: 20,
+            marginBottom: 30,
+            flexWrap: "wrap",
+            fontSize: "0.75rem",
+            color: MAKO.textDim
+          }}>
+            <span>🗡️ Sword: B-Rank+</span>
+            <span>👑 Crown: S-Rank+</span>
+            <span>🪽 Wings: S+-Rank+</span>
+          </div>
+
+          {/* All Ranks Grid */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gap: 20
+          }}>
+            {FITNESS_RANKS.map((rank, idx) => (
+              <div
+                key={rank.name}
+                onMouseEnter={() => setHoveredRank(rank.name)}
+                onMouseLeave={() => setHoveredRank(null)}
+                style={{
+                  background: `linear-gradient(160deg, ${MAKO.bgLight}cc 0%, ${MAKO.bgCard}cc 100%)`,
+                  border: `1px solid ${hoveredRank === rank.name ? rank.vivid : MAKO.textMuted}30`,
+                  borderRadius: 16,
+                  padding: "20px 15px",
+                  textAlign: "center",
+                  transition: "all 0.3s ease",
+                  transform: hoveredRank === rank.name ? "scale(1.02)" : "scale(1)",
+                  boxShadow: hoveredRank === rank.name ? `0 0 30px ${rank.color}30` : "none",
+                }}
+              >
+                <ShadowMonarchArt rank={rank} level={rank.minLevel} size={140} />
+
+                <div style={{
+                  fontFamily: "'Orbitron', sans-serif",
+                  fontSize: "1.6rem",
+                  fontWeight: 900,
+                  color: rank.vivid,
+                  textShadow: `0 0 20px ${rank.glow}`,
+                  marginTop: 10,
+                }}>
+                  {rank.name}
+                </div>
+
+                <div style={{
+                  fontSize: "0.75rem",
+                  color: rank.color,
+                  fontWeight: 600,
+                  letterSpacing: "0.05em",
+                  marginBottom: 6,
+                }}>
+                  {rank.title}
+                </div>
+
+                <div style={{
+                  fontSize: "0.65rem",
+                  color: MAKO.textMuted,
+                  padding: "4px 10px",
+                  background: `${MAKO.bg}80`,
+                  borderRadius: 6,
+                  display: "inline-block",
+                }}>
+                  Unlocks at Level {rank.minLevel}
+                </div>
+
+                {/* Features for this rank */}
+                <div style={{
+                  marginTop: 10,
+                  fontSize: "0.6rem",
+                  color: MAKO.textDim,
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: 8,
+                }}>
+                  {idx >= 3 && <span style={{ color: rank.color }}>🗡️</span>}
+                  {idx >= 5 && <span style={{ color: rank.color }}>👑</span>}
+                  {idx >= 6 && <span style={{ color: rank.color }}>🪽</span>}
+                  {idx < 3 && <span style={{ opacity: 0.3 }}>Basic</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Comparison View */}
+          <div style={{ marginTop: 50 }}>
+            <h2 style={{
+              fontFamily: "'Orbitron', sans-serif",
+              fontSize: "1.2rem",
+              textAlign: "center",
+              marginBottom: 20,
+              color: MAKO.text,
+              letterSpacing: "0.15em"
+            }}>
+              SIDE-BY-SIDE COMPARISON
+            </h2>
+            <div style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "flex-end",
+              gap: 10,
+              flexWrap: "wrap",
+              padding: "30px 20px",
+              background: `linear-gradient(180deg, ${MAKO.bgCard}50 0%, transparent 100%)`,
+              borderRadius: 20,
+            }}>
+              {FITNESS_RANKS.map((rank, idx) => (
+                <div key={rank.name} style={{ textAlign: "center" }}>
+                  <ShadowMonarchArt rank={rank} level={rank.minLevel} size={80 + idx * 12} />
+                  <div style={{
+                    fontFamily: "'Orbitron', sans-serif",
+                    fontSize: "0.7rem",
+                    color: rank.vivid,
+                    marginTop: 5,
+                  }}>
+                    {rank.name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{
+            textAlign: "center",
+            marginTop: 40,
+            fontSize: "0.7rem",
+            color: MAKO.textMuted,
+            letterSpacing: "0.1em"
+          }}>
+            "I alone level up."
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>

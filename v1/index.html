@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solo Leveling Fitness</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { margin: 0; padding: 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useEffect, useReducer, useMemo } = React;
+
+// Mock storage API using localStorage
+window.storage = {
+  async get(key) {
+    const value = localStorage.getItem(key);
+    return value ? { value } : null;
+  },
+  async set(key, value) {
+    localStorage.setItem(key, value);
+  }
+};
+
+// ─── Mako Color Palette ───
+const MAKO = {
+  mint: "#c1e0d6",
+  teal: "#5bafa0",
+  sea: "#5d96a0",
+  ocean: "#2d6e8a",
+  navy: "#3b4a8a",
+  abyss: "#2a2550",
+  bg: "#0e1225",
+  bgCard: "#121830",
+  bgLight: "#161d3a",
+  text: "#d0dde8",
+  textDim: "#5a6b84",
+  textMuted: "#384560",
+  success: "#5bafa0",
+  warning: "#e8a838",
+  danger: "#e05555",
+};
+
+const QUESTS = [
+  { id: "stretch", name: "Stretching Protocol", desc: "Swole-in-Seven Stretch (7 min)", xp: 30, icon: "🧘", daily: true },
+  { id: "core", name: "Core Enhancement", desc: "Swole-in-Seven Core (7 min)", xp: 35, icon: "💪", daily: true },
+  { id: "pushups", name: "Push-Up Trial", desc: "50 Push-Ups", xp: 40, icon: "⬆️", daily: true },
+  { id: "squats", name: "Squat Trial", desc: "50 Squats", xp: 40, icon: "🦵", daily: true },
+  { id: "dogwalk", name: "Beast Patrol", desc: "Walk the Dogs", xp: 25, icon: "🐕", daily: true },
+  { id: "gym", name: "Dungeon Raid", desc: "Gym: 30 min Incline Treadmill", xp: 60, icon: "🏋️", daily: false, weeklyTarget: 3 },
+  { id: "nutrition", name: "Ration Control", desc: "Half-box Goodles max", xp: 20, icon: "🍽️", daily: true },
+];
+
+const TOTAL_QUESTS = QUESTS.length;
+
+const RANKS = [
+  { name: "E", minLevel: 1, color: "#8a9a94", glow: "rgba(138,154,148,0.15)", title: "Weakest Hunter", vivid: "#c1e0d6" },
+  { name: "D", minLevel: 5, color: "#5bafa0", glow: "rgba(91,175,160,0.25)", title: "Aspiring Hunter", vivid: "#6ee8d4" },
+  { name: "C", minLevel: 12, color: "#5d96a0", glow: "rgba(93,150,160,0.3)", title: "Proven Hunter", vivid: "#6dc8dd" },
+  { name: "B", minLevel: 22, color: "#2d6e8a", glow: "rgba(45,110,138,0.35)", title: "Elite Hunter", vivid: "#38b4f0" },
+  { name: "A", minLevel: 35, color: "#4a5cb0", glow: "rgba(74,92,176,0.45)", title: "Shadow Soldier", vivid: "#6b80f0" },
+  { name: "S", minLevel: 50, color: "#7c6dd8", glow: "rgba(124,109,216,0.5)", title: "Shadow Monarch", vivid: "#a78bfa" },
+  { name: "S+", minLevel: 75, color: "#a78bfa", glow: "rgba(167,139,250,0.55)", title: "Sovereign", vivid: "#c4b5fd" },
+  { name: "National", minLevel: 100, color: "#c4b5fd", glow: "rgba(196,181,253,0.65)", title: "Absolute Being", vivid: "#e2d8ff" },
+];
+
+const MOTIVATIONAL_QUOTES = [
+  { text: "I alone level up.", type: "serious" },
+  { text: "The System rewards those who show up.", type: "serious" },
+  { text: "Every rep is a shadow soldier joining your army.", type: "serious" },
+  { text: "The difference between E-Rank and S-Rank is consistency.", type: "serious" },
+  { text: "A hunter who skips training is just prey.", type: "serious" },
+  { text: "Your daily quest isn't optional. The penalty is real.", type: "serious" },
+  { text: "The weakest hunter became the strongest. What's your excuse?", type: "serious" },
+  { text: "Rise. Your shadows are watching.", type: "serious" },
+  { text: "You didn't come this far to only come this far.", type: "serious" },
+  { text: "The dungeon doesn't care about your feelings. Enter anyway.", type: "serious" },
+  { text: "50 push-ups today, 50 more tomorrow. This is the way.", type: "serious" },
+  { text: "Sung Jin-Woo didn't have a snooze button. Neither do you.", type: "funny" },
+  { text: "The System has detected you thinking about skipping. Don't.", type: "funny" },
+  { text: "Your couch is a C-Rank dungeon. Escape immediately.", type: "funny" },
+  { text: "Half a box of Goodles is still Goodles. You're not suffering.", type: "funny" },
+  { text: "Rain is just the dungeon's atmospheric effect. Walk the dogs.", type: "funny" },
+  { text: "The dogs believe in you. Don't let them down.", type: "funny" },
+  { text: "Jin-Woo did 100 push-ups. You're doing 50. You have it easy.", type: "funny" },
+  { text: "Your pants are the real final boss.", type: "funny" },
+  { text: "The gym is a dungeon. You are the raid boss. Act like it.", type: "funny" },
+  { text: "Bellingham rain is free resistance training for the soul.", type: "funny" },
+  { text: "Shadow Monarch energy: get up, train, repeat.", type: "serious" },
+  { text: "The penalty for skipping isn't just XP. It's how you feel after.", type: "serious" },
+  { text: "You're not training to be huge. You're training to pick up your dogs.", type: "funny" },
+  { text: "E-Rank hunters don't stay E-Rank by lying on the couch.", type: "funny" },
+];
+
+const DAILY_SKIP_PENALTY = -15;
+const GYM_WEEKLY_PENALTY = -30;
+
+// Vibrancy system
+function getVibrancy(level) {
+  const rankIndex = RANKS.reduce((idx, r, i) => level >= r.minLevel ? i : idx, 0);
+  return Math.min(rankIndex / 7, 1);
+}
+
+function vibrateColor(baseHex, vibrancy, satBoost = 1.6, lightBoost = 1.2) {
+  const r = parseInt(baseHex.slice(1, 3), 16);
+  const g = parseInt(baseHex.slice(3, 5), 16);
+  const b = parseInt(baseHex.slice(5, 7), 16);
+  const gray = (r + g + b) / 3;
+  const desatR = Math.round(gray + (r - gray) * (0.3 + vibrancy * 0.7));
+  const desatG = Math.round(gray + (g - gray) * (0.3 + vibrancy * 0.7));
+  const desatB = Math.round(gray + (b - gray) * (0.3 + vibrancy * 0.7));
+  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+  return `#${clamp(desatR).toString(16).padStart(2,"0")}${clamp(desatG).toString(16).padStart(2,"0")}${clamp(desatB).toString(16).padStart(2,"0")}`;
+}
+
+function getXpForLevel(level) {
+  return Math.floor(80 * Math.pow(1.12, level - 1));
+}
+
+function getRank(level) {
+  let rank = RANKS[0];
+  for (const r of RANKS) { if (level >= r.minLevel) rank = r; }
+  return rank;
+}
+
+function getNextRank(level) {
+  for (const r of RANKS) { if (level < r.minLevel) return r; }
+  return null;
+}
+
+function getRankIndex(level) {
+  return RANKS.reduce((idx, r, i) => level >= r.minLevel ? i : idx, 0);
+}
+
+function getDateKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getWeekKey(date = new Date()) {
+  const d = new Date(date);
+  d.setDate(d.getDate() - d.getDay());
+  return getDateKey(d);
+}
+
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function isSameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function getDailyQuote() {
+  const today = new Date();
+  const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+  return MOTIVATIONAL_QUOTES[seed % MOTIVATIONAL_QUOTES.length];
+}
+
+// ─── State ───
+
+const initialState = {
+  level: 1, xp: 0, totalXp: 0, log: {}, weeklyGymLog: {},
+  penalties: 0, tab: "quests",
+  animatingXp: false, xpGain: 0, showLevelUp: false,
+  showPenalty: false, penaltyAmount: 0,
+  streak: 0, loaded: false,
+};
+
+function recalcLevelFromXp(totalXp) {
+  let level = 1;
+  let remaining = totalXp;
+  while (remaining >= getXpForLevel(level)) {
+    remaining -= getXpForLevel(level);
+    level++;
+  }
+  return { level, xp: remaining };
+}
+
+function reducer(state, action) {
+  switch (action.type) {
+    case "LOAD_STATE": return { ...state, ...action.payload, loaded: true };
+    case "COMPLETE_QUEST": {
+      const { questId } = action;
+      const today = getDateKey();
+      const todayLog = state.log[today] || [];
+      if (todayLog.includes(questId)) return state;
+      const quest = QUESTS.find((q) => q.id === questId);
+      const newLog = { ...state.log, [today]: [...todayLog, questId] };
+      let newWeeklyGym = { ...state.weeklyGymLog };
+      if (questId === "gym") {
+        const wk = getWeekKey();
+        newWeeklyGym[wk] = (newWeeklyGym[wk] || 0) + 1;
+      }
+      let newXp = state.xp + quest.xp;
+      let newLevel = state.level;
+      let newTotalXp = state.totalXp + quest.xp;
+      let leveledUp = false;
+      while (newXp >= getXpForLevel(newLevel)) {
+        newXp -= getXpForLevel(newLevel);
+        newLevel++;
+        leveledUp = true;
+      }
+      const dailyQuests = QUESTS.filter((q) => q.daily);
+      const allDailyDone = dailyQuests.every((q) => [...todayLog, questId].includes(q.id));
+      const newStreak = allDailyDone ? state.streak + 1 : state.streak;
+      return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyGymLog: newWeeklyGym, animatingXp: true, xpGain: quest.xp, showLevelUp: leveledUp, streak: newStreak };
+    }
+    case "UNCOMPLETE_QUEST": {
+      const { questId } = action;
+      const today = getDateKey();
+      const todayLog = state.log[today] || [];
+      if (!todayLog.includes(questId)) return state;
+      const quest = QUESTS.find((q) => q.id === questId);
+      const newLog = { ...state.log, [today]: todayLog.filter(id => id !== questId) };
+      if (newLog[today].length === 0) delete newLog[today];
+      let newWeeklyGym = { ...state.weeklyGymLog };
+      if (questId === "gym") {
+        const wk = getWeekKey();
+        newWeeklyGym[wk] = Math.max(0, (newWeeklyGym[wk] || 0) - 1);
+      }
+      const newTotalXp = Math.max(0, state.totalXp - quest.xp);
+      const { level: newLevel, xp: newXp } = recalcLevelFromXp(newTotalXp);
+      return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyGymLog: newWeeklyGym, animatingXp: true, xpGain: -quest.xp };
+    }
+    case "APPLY_PENALTY": {
+      const newXp = Math.max(0, state.xp + action.amount);
+      return { ...state, xp: newXp, penalties: state.penalties + 1, showPenalty: true, penaltyAmount: action.amount, streak: 0 };
+    }
+    case "CLEAR_ANIMATIONS": return { ...state, animatingXp: false, xpGain: 0, showLevelUp: false, showPenalty: false, penaltyAmount: 0 };
+    case "SET_TAB": return { ...state, tab: action.tab };
+    case "RESET": return { ...initialState, loaded: true };
+    default: return state;
+  }
+}
+
+async function saveState(state) {
+  try {
+    await window.storage.set("solo-leveling-v4", JSON.stringify({
+      level: state.level, xp: state.xp, totalXp: state.totalXp,
+      log: state.log, weeklyGymLog: state.weeklyGymLog,
+      penalties: state.penalties, streak: state.streak,
+    }));
+  } catch (e) { console.error("Save failed:", e); }
+}
+
+async function loadState() {
+  for (const key of ["solo-leveling-v4", "solo-leveling-v3", "solo-leveling-state-v2", "solo-leveling-state"]) {
+    try {
+      const r = await window.storage.get(key);
+      if (r && r.value) return JSON.parse(r.value);
+    } catch (e) {}
+  }
+  return null;
+}
+
+// ─── Shadow Monarch SVG ───
+
+function ShadowMonarchArt({ rank, level }) {
+  const vib = getVibrancy(level);
+  const ri = getRankIndex(level);
+  const eyeColor = rank.vivid || rank.color;
+  const auraOpacity = 0.08 + vib * 0.5;
+  const armorOpacity = 0.15 + vib * 0.55;
+  const wispCount = ri >= 4 ? 5 : ri >= 2 ? 4 : 3;
+  const wispXs = ri >= 4 ? [55, 70, 90, 110, 130] : ri >= 2 ? [60, 80, 110, 130] : [70, 100, 130];
+  const eyeSize = 3.5 + vib * 2;
+  const crestOpacity = 0.3 + vib * 0.6;
+  const showSword = ri >= 3;
+  const showCrown = ri >= 5;
+  const showWings = ri >= 6;
+
+  return (
+    <svg viewBox="0 0 200 230" width="170" height="195" style={{ display: "block", margin: "0 auto" }}>
+      <defs>
+        <radialGradient id="aura" cx="50%" cy="42%" r="50%">
+          <stop offset="0%" stopColor={eyeColor} stopOpacity={auraOpacity} />
+          <stop offset="60%" stopColor={rank.color} stopOpacity={auraOpacity * 0.3} />
+          <stop offset="100%" stopColor="transparent" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={vib > 0.5 ? MAKO.navy : MAKO.abyss} />
+          <stop offset="100%" stopColor={MAKO.bg} />
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation={2 + vib * 3} result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+        <filter id="bigGlow">
+          <feGaussianBlur stdDeviation={4 + vib * 5} result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+
+      {/* Aura */}
+      <ellipse cx="100" cy="100" rx={85 + vib * 15} ry={95 + vib * 15} fill="url(#aura)">
+        <animate attributeName="rx" values={`${80+vib*15};${95+vib*15};${80+vib*15}`} dur="4s" repeatCount="indefinite" />
+        <animate attributeName="ry" values={`${90+vib*15};${105+vib*15};${90+vib*15}`} dur="4s" repeatCount="indefinite" />
+      </ellipse>
+
+      {/* Wings (S+ and above) */}
+      {showWings && (
+        <g opacity={0.15 + vib * 0.2} filter="url(#glow)">
+          <path d="M45 90 Q20 60 15 35 Q25 55 50 70 Z" fill={eyeColor} opacity="0.5">
+            <animate attributeName="d" values="M45 90 Q20 60 15 35 Q25 55 50 70 Z;M45 90 Q18 55 10 30 Q22 52 50 70 Z;M45 90 Q20 60 15 35 Q25 55 50 70 Z" dur="5s" repeatCount="indefinite" />
+          </path>
+          <path d="M155 90 Q180 60 185 35 Q175 55 150 70 Z" fill={eyeColor} opacity="0.5">
+            <animate attributeName="d" values="M155 90 Q180 60 185 35 Q175 55 150 70 Z;M155 90 Q182 55 190 30 Q178 52 150 70 Z;M155 90 Q180 60 185 35 Q175 55 150 70 Z" dur="5s" repeatCount="indefinite" />
+          </path>
+        </g>
+      )}
+
+      {/* Body / cloak */}
+      <path d="M100 40 C65 40 45 70 45 105 C45 145 60 175 75 200 L125 200 C140 175 155 145 155 105 C155 70 135 40 100 40Z"
+        fill="url(#bodyGrad)" opacity={0.8 + vib * 0.15} />
+
+      {/* Armor details */}
+      <g opacity={armorOpacity}>
+        <path d="M85 75 L80 125 M115 75 L120 125" stroke={eyeColor} strokeWidth={0.8 + vib} fill="none" />
+        <path d="M75 135 L100 152 L125 135" stroke={eyeColor} strokeWidth={0.8 + vib} fill="none" />
+        {ri >= 2 && <path d="M90 90 L100 80 L110 90" stroke={eyeColor} strokeWidth={0.6 + vib * 0.5} fill="none" opacity="0.5" />}
+        {ri >= 3 && <path d="M80 100 L85 115 M120 100 L115 115" stroke={eyeColor} strokeWidth={0.5 + vib * 0.5} fill="none" opacity="0.4" />}
+        {ri >= 4 && (
+          <>
+            <circle cx="100" cy="120" r={3 + vib} fill="none" stroke={eyeColor} strokeWidth="0.5" opacity="0.4" />
+            <path d="M70 150 L75 170 M130 150 L125 170" stroke={eyeColor} strokeWidth="0.5" fill="none" opacity="0.3" />
+          </>
+        )}
+      </g>
+
+      {/* Sword (B-rank+) */}
+      {showSword && (
+        <g opacity={0.3 + vib * 0.4} filter="url(#glow)">
+          <line x1="155" y1="55" x2="170" y2="175" stroke={eyeColor} strokeWidth={1.5 + vib} strokeLinecap="round" />
+          <line x1="162" y1="65" x2="175" y2="62" stroke={eyeColor} strokeWidth={1 + vib * 0.5} strokeLinecap="round" />
+        </g>
+      )}
+
+      {/* Crown (S-rank+) */}
+      {showCrown && (
+        <g filter="url(#glow)" opacity={0.4 + vib * 0.4}>
+          <path d="M82 30 L88 20 L94 28 L100 15 L106 28 L112 20 L118 30" fill="none" stroke={eyeColor} strokeWidth={1 + vib} />
+          <path d="M82 30 L118 30" stroke={eyeColor} strokeWidth={0.8 + vib * 0.5} />
+        </g>
+      )}
+
+      {/* Helmet */}
+      <path d="M100 35 C78 35 62 52 62 72 C62 92 78 100 100 100 C122 100 138 92 138 72 C138 52 122 35 100 35Z"
+        fill={MAKO.abyss} stroke={eyeColor} strokeWidth={0.3 + vib * 0.7} opacity={0.75 + vib * 0.2} />
+
+      {/* Crest (no crown ranks) */}
+      {!showCrown && (
+        <>
+          <path d="M100 28 L95 45 L100 40 L105 45 Z" fill={eyeColor} opacity={crestOpacity} />
+          <path d="M80 50 L65 38" stroke={eyeColor} strokeWidth={1 + vib} opacity={crestOpacity * 0.7} strokeLinecap="round" />
+          <path d="M120 50 L135 38" stroke={eyeColor} strokeWidth={1 + vib} opacity={crestOpacity * 0.7} strokeLinecap="round" />
+        </>
+      )}
+
+      {/* Eyes */}
+      <g filter={ri >= 3 ? "url(#bigGlow)" : "url(#glow)"}>
+        <ellipse cx="87" cy="68" rx={5 + vib * 1.5} ry={eyeSize} fill={eyeColor} opacity={0.7 + vib * 0.3}>
+          <animate attributeName="opacity" values={`${0.7+vib*0.3};${0.4+vib*0.2};${0.7+vib*0.3}`} dur="3s" repeatCount="indefinite" />
+        </ellipse>
+        <ellipse cx="113" cy="68" rx={5 + vib * 1.5} ry={eyeSize} fill={eyeColor} opacity={0.7 + vib * 0.3}>
+          <animate attributeName="opacity" values={`${0.7+vib*0.3};${0.4+vib*0.2};${0.7+vib*0.3}`} dur="3s" repeatCount="indefinite" />
+        </ellipse>
+      </g>
+
+      {/* Shadow wisps */}
+      {wispXs.map((x, i) => (
+        <g key={i} opacity={0.08 + vib * 0.15}>
+          <path d={`M${x} 200 Q${x-5} 178 ${x+3} 162 Q${x+8} 146 ${x} 130`}
+            stroke={eyeColor} strokeWidth={1 + vib * 0.8} fill="none" strokeLinecap="round">
+            <animate attributeName="opacity" values={`${0.08+vib*0.15};${0.02+vib*0.05};${0.08+vib*0.15}`} dur={`${3+i*0.7}s`} repeatCount="indefinite" />
+          </path>
+        </g>
+      ))}
+
+      <text x="100" y="225" textAnchor="middle" fill={eyeColor} fontSize="10"
+        fontFamily="'Orbitron', monospace" opacity={0.3 + vib * 0.4} letterSpacing="3">
+        LV.{level}
+      </text>
+    </svg>
+  );
+}
+
+// ─── Overlays ───
+
+function XpBurst({ amount, onDone }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => { const t = setTimeout(() => { setVisible(false); onDone(); }, 1500); return () => clearTimeout(t); }, []);
+  if (!visible) return null;
+  return (
+    <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 1000, pointerEvents: "none" }}>
+      <div style={{
+        fontSize: "3rem", fontWeight: 900,
+        color: amount > 0 ? MAKO.success : MAKO.danger,
+        textShadow: amount > 0 ? `0 0 30px ${MAKO.success}` : `0 0 30px ${MAKO.danger}`,
+        animation: "floatUp 1.5s ease-out forwards", fontFamily: "'Rajdhani', sans-serif",
+      }}>{amount > 0 ? `+${amount} XP` : `${amount} XP`}</div>
+    </div>
+  );
+}
+
+function LevelUpOverlay({ level, onDone }) {
+  const [visible, setVisible] = useState(true);
+  const rank = getRank(level);
+  useEffect(() => { const t = setTimeout(() => { setVisible(false); onDone(); }, 3500); return () => clearTimeout(t); }, []);
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 2000,
+      background: `radial-gradient(circle at 50% 40%, ${MAKO.abyss}ee 0%, ${MAKO.bg}fa 100%)`,
+      display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.3s ease-out",
+    }} onClick={() => { setVisible(false); onDone(); }}>
+      <div style={{ textAlign: "center", animation: "scaleIn 0.5s ease-out" }}>
+        <div style={{
+          fontSize: "0.85rem", letterSpacing: "0.5em", color: MAKO.textDim,
+          textTransform: "uppercase", marginBottom: 12, fontFamily: "'Rajdhani', sans-serif",
+        }}>SYSTEM NOTIFICATION</div>
+        <div style={{
+          fontSize: "3.5rem", fontWeight: 900, color: rank.vivid || rank.color,
+          textShadow: `0 0 40px ${rank.glow}, 0 0 80px ${rank.glow}`,
+          fontFamily: "'Orbitron', sans-serif", letterSpacing: "0.05em",
+        }}>LEVEL {level}</div>
+        <div style={{
+          fontSize: "1rem", color: rank.vivid || rank.color, marginTop: 6,
+          fontFamily: "'Rajdhani', sans-serif", opacity: 0.8, letterSpacing: "0.2em",
+        }}>{rank.title.toUpperCase()}</div>
+        <div style={{
+          fontSize: "1.1rem", color: MAKO.textDim, marginTop: 12, fontFamily: "'Rajdhani', sans-serif",
+        }}>You have become stronger.</div>
+        <div style={{
+          width: 80, height: 2, margin: "20px auto 0",
+          background: `linear-gradient(90deg, transparent, ${rank.vivid || rank.color}, transparent)`,
+        }} />
+      </div>
+    </div>
+  );
+}
+
+function PenaltyOverlay({ amount, onDone }) {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => { const t = setTimeout(() => { setVisible(false); onDone(); }, 2500); return () => clearTimeout(t); }, []);
+  if (!visible) return null;
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 2000,
+      background: `radial-gradient(circle at 50% 40%, #2a0a0aee 0%, ${MAKO.bg}fa 100%)`,
+      display: "flex", alignItems: "center", justifyContent: "center", animation: "fadeIn 0.3s ease-out",
+    }} onClick={() => { setVisible(false); onDone(); }}>
+      <div style={{ textAlign: "center", animation: "shake 0.5s ease-out" }}>
+        <div style={{
+          fontSize: "0.85rem", letterSpacing: "0.5em", color: MAKO.danger,
+          textTransform: "uppercase", marginBottom: 12, fontFamily: "'Rajdhani', sans-serif",
+        }}>⚠ SYSTEM WARNING ⚠</div>
+        <div style={{
+          fontSize: "2.5rem", fontWeight: 900, color: MAKO.danger,
+          textShadow: `0 0 40px ${MAKO.danger}`, fontFamily: "'Rajdhani', sans-serif",
+        }}>PENALTY: {amount} XP</div>
+        <div style={{
+          fontSize: "1rem", color: "#e08888", marginTop: 12, fontFamily: "'Rajdhani', sans-serif",
+        }}>Failure to complete daily quests will result in punishment.</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Quest Card ───
+
+function QuestCard({ quest, completed, onToggle, rank, vib }) {
+  const [hovering, setHovering] = useState(false);
+  const accentColor = rank.vivid || rank.color;
+  return (
+    <div
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      onClick={() => onToggle(quest.id, completed)}
+      style={{
+        background: completed
+          ? `linear-gradient(135deg, ${MAKO.success}${Math.round(8 + vib * 8).toString(16).padStart(2,"0")} 0%, ${MAKO.success}04 100%)`
+          : hovering
+            ? `linear-gradient(135deg, ${MAKO.bgLight} 0%, ${MAKO.bgCard} 100%)`
+            : `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`,
+        border: completed
+          ? `1px solid ${MAKO.success}${Math.round(30 + vib * 30).toString(16).padStart(2,"0")}`
+          : `1px solid ${hovering ? MAKO.textMuted + "60" : MAKO.textMuted + "20"}`,
+        borderRadius: 12, padding: "14px 18px",
+        cursor: "pointer",
+        transition: "all 0.3s ease",
+        display: "flex", alignItems: "center", gap: 14,
+        position: "relative", overflow: "hidden",
+        transform: hovering ? "translateY(-1px)" : "none",
+        boxShadow: hovering ? `0 6px 20px ${MAKO.bg}80` : "none",
+      }}
+    >
+      {completed && (
+        <div style={{
+          position: "absolute", top: 0, left: 0, bottom: 0, width: 3,
+          background: `linear-gradient(180deg, ${MAKO.success}, ${MAKO.teal})`,
+          boxShadow: `0 0 ${6 + vib * 6}px ${MAKO.success}${Math.round(40 + vib * 40).toString(16).padStart(2,"0")}`,
+        }} />
+      )}
+      <div style={{
+        fontSize: "1.6rem", width: 44, height: 44,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: completed ? `${MAKO.success}15` : `${MAKO.textMuted}10`,
+        borderRadius: 10, flexShrink: 0,
+        filter: completed ? `saturate(${1 + vib * 0.5})` : `grayscale(${0.4 - vib * 0.3})`,
+      }}>{quest.icon}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{
+          fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "1rem",
+          color: completed ? MAKO.success : MAKO.text, letterSpacing: "0.02em",
+          textDecoration: completed ? "line-through" : "none",
+          textDecorationColor: `${MAKO.success}40`,
+        }}>{quest.name}</div>
+        <div style={{ fontSize: "0.78rem", color: MAKO.textDim, marginTop: 1, fontFamily: "'Rajdhani', sans-serif" }}>
+          {quest.desc}
+          {!quest.daily && <span style={{ color: MAKO.warning, marginLeft: 8 }}>• {quest.weeklyTarget}x/week</span>}
+        </div>
+      </div>
+      <div style={{
+        fontFamily: "'Rajdhani', sans-serif", fontWeight: 800, fontSize: "0.92rem",
+        color: completed ? `${MAKO.success}70` : accentColor,
+        textShadow: completed ? "none" : `0 0 ${6 + vib * 6}px ${rank.glow}`,
+        whiteSpace: "nowrap",
+      }}>{completed ? "✓ CLEAR" : `+${quest.xp} XP`}</div>
+    </div>
+  );
+}
+
+// ─── Heatmap ───
+
+function HeatmapCalendar({ log, rank, vib }) {
+  const [tooltip, setTooltip] = useState(null);
+  const today = new Date();
+  const totalWeeks = 20;
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - ((totalWeeks - 1) * 7 + startDate.getDay()));
+  const weeks = [];
+  let current = new Date(startDate);
+  for (let w = 0; w < totalWeeks; w++) {
+    const week = [];
+    for (let d = 0; d < 7; d++) { week.push(new Date(current)); current = addDays(current, 1); }
+    weeks.push(week);
+  }
+  function getIntensity(date) {
+    const key = getDateKey(date);
+    const dayLog = log[key] || [];
+    if (dayLog.length === 0) return 0;
+    const ratio = dayLog.length / TOTAL_QUESTS;
+    if (ratio <= 0.25) return 1;
+    if (ratio <= 0.5) return 2;
+    if (ratio <= 0.85) return 3;
+    return 4;
+  }
+  const accentVivid = rank.vivid || rank.color;
+  const intensityColors = [
+    `${MAKO.textMuted}15`,
+    vibrateColor(MAKO.mint, vib) + "44",
+    vibrateColor(MAKO.teal, vib) + "77",
+    vibrateColor(MAKO.sea, vib) + "aa",
+    vibrateColor(MAKO.ocean, vib),
+  ];
+  const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""];
+  const cellSize = 13;
+  const cellGap = 3;
+  const monthLabels = [];
+  let lastMonth = -1;
+  weeks.forEach((week, wi) => {
+    const m = week[0].getMonth();
+    if (m !== lastMonth) { lastMonth = m; monthLabels.push({ index: wi, label: week[0].toLocaleString("en-US", { month: "short" }) }); }
+  });
+
+  return (
+    <div style={{ position: "relative" }}>
+      <div style={{ display: "flex", marginLeft: 32, marginBottom: 4, height: 14, position: "relative" }}>
+        {monthLabels.map((m, i) => (
+          <div key={i} style={{
+            position: "absolute", left: m.index * (cellSize + cellGap),
+            fontSize: "0.6rem", color: MAKO.textDim, fontFamily: "'Rajdhani', sans-serif",
+          }}>{m.label}</div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 0, marginTop: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: cellGap, marginRight: 6, width: 24 }}>
+          {dayLabels.map((label, i) => (
+            <div key={i} style={{
+              height: cellSize, display: "flex", alignItems: "center", justifyContent: "flex-end",
+              fontSize: "0.55rem", color: MAKO.textMuted, fontFamily: "'Rajdhani', sans-serif", paddingRight: 2,
+            }}>{label}</div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: cellGap }}>
+          {weeks.map((week, wi) => (
+            <div key={wi} style={{ display: "flex", flexDirection: "column", gap: cellGap }}>
+              {week.map((date, di) => {
+                const intensity = date > today ? -1 : getIntensity(date);
+                const key = getDateKey(date);
+                const dayLog = log[key] || [];
+                const isToday = isSameDay(date, today);
+                return (
+                  <div key={di}
+                    onMouseEnter={() => intensity >= 0 && setTooltip({ key, date, log: dayLog })}
+                    onMouseLeave={() => setTooltip(null)}
+                    style={{
+                      width: cellSize, height: cellSize, borderRadius: 2,
+                      background: intensity < 0 ? "transparent" : intensityColors[intensity],
+                      border: isToday ? `1.5px solid ${accentVivid}` : intensity < 0 ? "1px solid transparent" : `1px solid ${MAKO.textMuted}15`,
+                      cursor: intensity >= 0 ? "pointer" : "default",
+                      transition: "background 0.2s",
+                      boxShadow: isToday ? `0 0 6px ${accentVivid}50` : "none",
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 10, marginLeft: 32 }}>
+        <span style={{ fontSize: "0.55rem", color: MAKO.textMuted, marginRight: 4, fontFamily: "'Rajdhani', sans-serif" }}>Less</span>
+        {intensityColors.map((c, i) => (
+          <div key={i} style={{ width: cellSize, height: cellSize, borderRadius: 2, background: c, border: `1px solid ${MAKO.textMuted}15` }} />
+        ))}
+        <span style={{ fontSize: "0.55rem", color: MAKO.textMuted, marginLeft: 4, fontFamily: "'Rajdhani', sans-serif" }}>More</span>
+      </div>
+      {tooltip && (
+        <div style={{
+          position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)",
+          marginBottom: 8, background: MAKO.bgLight, border: `1px solid ${MAKO.textMuted}30`,
+          borderRadius: 8, padding: "8px 12px",
+          fontSize: "0.72rem", color: MAKO.text, fontFamily: "'Rajdhani', sans-serif",
+          whiteSpace: "nowrap", zIndex: 100, boxShadow: `0 4px 20px ${MAKO.bg}cc`, pointerEvents: "none",
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 2 }}>
+            {tooltip.date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+          </div>
+          {tooltip.log.length === 0
+            ? <div style={{ color: MAKO.textMuted }}>No quests completed</div>
+            : <div style={{ color: MAKO.success }}>{tooltip.log.length}/{TOTAL_QUESTS} quests cleared</div>
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Weekly Summary ───
+
+function WeeklySummary({ log, weeklyGymLog, rank }) {
+  const today = new Date();
+  const weeks = [];
+  for (let i = 0; i < 8; i++) {
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() - (i * 7));
+    const weekEnd = addDays(weekStart, 6);
+    let questsCompleted = 0, totalPossible = 0, xpEarned = 0, perfectDays = 0, activeDays = 0;
+    for (let d = 0; d < 7; d++) {
+      const date = addDays(weekStart, d);
+      if (date > today) break;
+      const key = getDateKey(date);
+      const dayLog = log[key] || [];
+      questsCompleted += dayLog.length;
+      totalPossible += TOTAL_QUESTS;
+      dayLog.forEach(qid => { const q = QUESTS.find(quest => quest.id === qid); if (q) xpEarned += q.xp; });
+      if (QUESTS.filter(q => q.daily).every(q => dayLog.includes(q.id))) perfectDays++;
+      if (dayLog.length > 0) activeDays++;
+    }
+    const wk = getDateKey(weekStart);
+    weeks.push({ start: weekStart, end: weekEnd, questsCompleted, totalPossible, xpEarned, perfectDays, activeDays, gymCount: weeklyGymLog[wk] || 0, isCurrent: i === 0 });
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {weeks.map((week, i) => {
+        const pct = week.totalPossible > 0 ? Math.round((week.questsCompleted / week.totalPossible) * 100) : 0;
+        const barColor = pct >= 80 ? MAKO.success : pct >= 50 ? MAKO.warning : pct >= 20 ? MAKO.sea : MAKO.textMuted;
+        return (
+          <div key={i} style={{
+            background: week.isCurrent ? `linear-gradient(135deg, ${MAKO.bgLight} 0%, ${MAKO.bgCard} 100%)` : `linear-gradient(135deg, ${MAKO.bgCard}aa 0%, ${MAKO.bg}aa 100%)`,
+            border: week.isCurrent ? `1px solid ${rank.color}25` : `1px solid ${MAKO.textMuted}15`,
+            borderRadius: 10, padding: "12px 14px",
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{
+                fontSize: "0.7rem", color: week.isCurrent ? rank.vivid || rank.color : MAKO.textDim,
+                fontWeight: 700, fontFamily: "'Rajdhani', sans-serif", letterSpacing: "0.1em",
+              }}>
+                {week.isCurrent ? "⬥ THIS WEEK" : `${week.start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${week.end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+              </div>
+              <div style={{
+                fontSize: "0.88rem", fontWeight: 800, color: barColor, fontFamily: "'Rajdhani', sans-serif",
+                textShadow: pct >= 80 ? `0 0 8px ${MAKO.success}50` : "none",
+              }}>{pct}%</div>
+            </div>
+            <div style={{ height: 3, background: `${MAKO.textMuted}15`, borderRadius: 2, overflow: "hidden", marginBottom: 8 }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: barColor, borderRadius: 2, transition: "width 0.6s ease" }} />
+            </div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: "0.68rem", fontFamily: "'Rajdhani', sans-serif" }}>
+              <div><span style={{ color: MAKO.textMuted }}>XP </span><span style={{ color: MAKO.text, fontWeight: 700 }}>{week.xpEarned.toLocaleString()}</span></div>
+              <div><span style={{ color: MAKO.textMuted }}>Active </span><span style={{ color: MAKO.text, fontWeight: 700 }}>{week.activeDays}/7</span></div>
+              <div><span style={{ color: MAKO.textMuted }}>Perfect </span><span style={{ color: week.perfectDays > 0 ? MAKO.warning : MAKO.textMuted, fontWeight: 700 }}>{week.perfectDays}</span></div>
+              <div><span style={{ color: MAKO.textMuted }}>Gym </span><span style={{ color: week.gymCount >= 3 ? MAKO.success : week.gymCount > 0 ? MAKO.warning : MAKO.textMuted, fontWeight: 700 }}>{week.gymCount}/3</span></div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main ───
+
+function SoloLevelingFitness() {
+  const [state, dispatch] = useReducer(reducer, initialState);
+
+  useEffect(() => {
+    (async () => {
+      const saved = await loadState();
+      dispatch({ type: "LOAD_STATE", payload: saved || {} });
+    })();
+  }, []);
+
+  useEffect(() => { if (state.loaded) saveState(state); },
+    [state.level, state.xp, state.totalXp, JSON.stringify(state.log), JSON.stringify(state.weeklyGymLog), state.penalties, state.streak]);
+
+  const today = getDateKey();
+  const todayLog = state.log[today] || [];
+  const rank = getRank(state.level);
+  const nextRank = getNextRank(state.level);
+  const xpNeeded = getXpForLevel(state.level);
+  const xpPercent = Math.min((state.xp / xpNeeded) * 100, 100);
+  const dailyQuests = QUESTS.filter((q) => q.daily);
+  const completedDaily = dailyQuests.filter((q) => todayLog.includes(q.id)).length;
+  const totalDaily = dailyQuests.length;
+  const weekKey = getWeekKey();
+  const gymThisWeek = state.weeklyGymLog[weekKey] || 0;
+  const quote = useMemo(() => getDailyQuote(), []);
+  const vib = getVibrancy(state.level);
+  const accentVivid = rank.vivid || rank.color;
+
+  const handleToggle = (questId, wasCompleted) => {
+    if (wasCompleted) {
+      dispatch({ type: "UNCOMPLETE_QUEST", questId });
+    } else {
+      dispatch({ type: "COMPLETE_QUEST", questId });
+    }
+  };
+  const handleApplyPenalty = () => {
+    const missed = dailyQuests.filter((q) => !todayLog.includes(q.id)).length;
+    if (missed > 0) dispatch({ type: "APPLY_PENALTY", amount: DAILY_SKIP_PENALTY * missed });
+  };
+  const clearAnimations = () => dispatch({ type: "CLEAR_ANIMATIONS" });
+
+  const ambientSize = 400 + vib * 300;
+  const ambientOpacity = 0.08 + vib * 0.15;
+  const gridOpacity = 0.015 + vib * 0.02;
+
+  if (!state.loaded) {
+    return (
+      <div style={{ minHeight: "100vh", background: MAKO.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ color: MAKO.textDim, fontFamily: "'Rajdhani', sans-serif", fontSize: "1.2rem", letterSpacing: "0.3em" }}>
+          INITIALIZING SYSTEM...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: `linear-gradient(180deg, ${MAKO.bg} 0%, ${MAKO.bgCard} 50%, ${MAKO.bg} 100%)`,
+      color: MAKO.text, fontFamily: "'Rajdhani', sans-serif",
+      position: "relative", overflow: "hidden",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap');
+        @keyframes floatUp { 0% { opacity:1; transform:translateY(0) scale(1); } 100% { opacity:0; transform:translateY(-80px) scale(1.3); } }
+        @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+        @keyframes scaleIn { from { opacity:0; transform:scale(0.8); } to { opacity:1; transform:scale(1); } }
+        @keyframes shake { 0%,100% { transform:translateX(0); } 20% { transform:translateX(-10px); } 40% { transform:translateX(10px); } 60% { transform:translateX(-5px); } 80% { transform:translateX(5px); } }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+        @keyframes xpGlow { 0%,100% { box-shadow: 0 0 ${4+vib*8}px ${accentVivid}30; } 50% { box-shadow: 0 0 ${10+vib*16}px ${accentVivid}60; } }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        ::-webkit-scrollbar { width:4px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:${MAKO.textMuted}40; border-radius:2px; }
+      `}</style>
+
+      {/* Background grid */}
+      <div style={{
+        position: "fixed", inset: 0, opacity: gridOpacity, pointerEvents: "none",
+        backgroundImage: `linear-gradient(${accentVivid}20 1px, transparent 1px), linear-gradient(90deg, ${accentVivid}20 1px, transparent 1px)`,
+        backgroundSize: "60px 60px",
+      }} />
+
+      {/* Ambient glow */}
+      <div style={{
+        position: "fixed", top: -200, left: "50%", transform: "translateX(-50%)",
+        width: ambientSize, height: ambientSize, borderRadius: "50%",
+        background: `radial-gradient(circle, ${accentVivid} 0%, transparent 70%)`,
+        opacity: ambientOpacity, pointerEvents: "none",
+        transition: "all 1s ease",
+      }} />
+
+      {state.animatingXp && state.xpGain !== 0 && <XpBurst amount={state.xpGain} onDone={clearAnimations} />}
+      {state.showLevelUp && <LevelUpOverlay level={state.level} onDone={clearAnimations} />}
+      {state.showPenalty && <PenaltyOverlay amount={state.penaltyAmount} onDone={clearAnimations} />}
+
+      <div style={{ maxWidth: 540, margin: "0 auto", padding: "20px 16px 40px" }}>
+
+        {/* Player Card */}
+        <div style={{
+          textAlign: "center", marginBottom: 20, padding: "24px 20px 20px",
+          background: `linear-gradient(160deg, ${MAKO.bgLight}cc 0%, ${MAKO.bgCard}cc 50%, ${MAKO.bg}cc 100%)`,
+          border: `1px solid ${MAKO.textMuted}${Math.round(15 + vib * 20).toString(16).padStart(2,"0")}`,
+          borderRadius: 16, position: "relative", overflow: "hidden",
+        }}>
+          <div style={{
+            position: "absolute", top: -30, left: "50%", transform: "translateX(-50%)",
+            width: 200 + vib * 100, height: 200 + vib * 100, borderRadius: "50%",
+            background: `radial-gradient(circle, ${accentVivid} 0%, transparent 60%)`,
+            opacity: 0.1 + vib * 0.15, pointerEvents: "none", transition: "all 1s ease",
+          }} />
+
+          <ShadowMonarchArt rank={rank} level={state.level} />
+
+          <div style={{
+            fontSize: "0.6rem", letterSpacing: "0.5em", color: MAKO.textMuted,
+            textTransform: "uppercase", marginTop: 8, marginBottom: 6,
+          }}>HUNTER STATUS</div>
+
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 2 }}>
+            <div style={{
+              fontFamily: "'Orbitron', sans-serif", fontSize: "2.4rem", fontWeight: 900,
+              color: accentVivid,
+              textShadow: `0 0 ${20 + vib * 30}px ${rank.glow}, 0 0 ${40 + vib * 40}px ${rank.glow}`,
+              lineHeight: 1, transition: "all 0.5s ease",
+            }}>{rank.name}</div>
+            <div style={{ fontSize: "0.72rem", color: MAKO.textDim, letterSpacing: "0.15em", textAlign: "left", lineHeight: 1.4 }}>
+              <div>RANK</div>
+              <div style={{ color: MAKO.text }}>{rank.title}</div>
+            </div>
+          </div>
+
+          {nextRank && (
+            <div style={{ fontSize: "0.68rem", color: MAKO.textMuted, marginTop: 4 }}>
+              Next rank: <span style={{ color: nextRank.vivid || nextRank.color }}>{nextRank.name}</span> at Lv.{nextRank.minLevel}
+            </div>
+          )}
+
+          {/* XP Bar */}
+          <div style={{ marginTop: 16 }}>
+            <div style={{
+              display: "flex", justifyContent: "space-between",
+              fontSize: "0.68rem", color: MAKO.textDim, marginBottom: 5, letterSpacing: "0.1em",
+            }}>
+              <span>EXP</span>
+              <span>{state.xp.toLocaleString()} / {xpNeeded.toLocaleString()}</span>
+            </div>
+            <div style={{ height: 5, background: `${MAKO.textMuted}18`, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", width: `${xpPercent}%`,
+                background: `linear-gradient(90deg, ${vibrateColor(MAKO.teal, vib)}, ${vibrateColor(MAKO.ocean, vib)})`,
+                borderRadius: 3, transition: "width 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+                animation: xpPercent > 0 ? "xpGlow 2.5s ease-in-out infinite" : "none",
+              }} />
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div style={{ display: "flex", justifyContent: "center", gap: 28, marginTop: 16, fontSize: "0.72rem" }}>
+            {[
+              { label: "TOTAL XP", value: state.totalXp.toLocaleString(), color: MAKO.text },
+              { label: "STREAK", value: `${state.streak}${state.streak > 0 ? " 🔥" : ""}`, color: state.streak > 0 ? MAKO.warning : MAKO.textDim },
+              { label: "PENALTIES", value: state.penalties, color: state.penalties > 0 ? MAKO.danger : MAKO.textDim },
+            ].map((s, i) => (
+              <div key={i} style={{ textAlign: "center" }}>
+                <div style={{ color: MAKO.textMuted, letterSpacing: "0.12em", marginBottom: 2, fontSize: "0.6rem" }}>{s.label}</div>
+                <div style={{ color: s.color, fontWeight: 700, fontSize: "0.95rem" }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Quote */}
+        <div style={{
+          padding: "12px 16px", marginBottom: 20,
+          background: `linear-gradient(135deg, ${MAKO.bgCard}88 0%, ${MAKO.bg}88 100%)`,
+          border: `1px solid ${MAKO.textMuted}15`,
+          borderRadius: 10, borderLeft: `3px solid ${accentVivid}${Math.round(40 + vib * 40).toString(16).padStart(2,"0")}`,
+        }}>
+          <div style={{ fontSize: "0.82rem", color: MAKO.text, fontStyle: "italic", lineHeight: 1.5, fontWeight: 500 }}>
+            "{quote.text}"
+          </div>
+          <div style={{ fontSize: "0.6rem", color: MAKO.textMuted, marginTop: 4, letterSpacing: "0.15em", textTransform: "uppercase" }}>
+            — THE SYSTEM {quote.type === "funny" ? "🗿" : "⚔️"}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{
+          display: "flex", gap: 0, marginBottom: 18,
+          background: `${MAKO.bgCard}80`, borderRadius: 10, padding: 3,
+          border: `1px solid ${MAKO.textMuted}15`,
+        }}>
+          {[
+            { id: "quests", label: "QUESTS", icon: "⚔️" },
+            { id: "progress", label: "PROGRESS", icon: "📊" },
+          ].map((tab) => (
+            <button key={tab.id}
+              onClick={() => dispatch({ type: "SET_TAB", tab: tab.id })}
+              style={{
+                flex: 1, padding: "10px 0",
+                background: state.tab === tab.id ? `linear-gradient(135deg, ${accentVivid}12, ${accentVivid}06)` : "transparent",
+                border: state.tab === tab.id ? `1px solid ${accentVivid}28` : "1px solid transparent",
+                borderRadius: 8, cursor: "pointer",
+                fontFamily: "'Rajdhani', sans-serif", fontWeight: 700,
+                fontSize: "0.78rem", letterSpacing: "0.15em",
+                color: state.tab === tab.id ? accentVivid : MAKO.textMuted,
+                transition: "all 0.2s",
+              }}
+            >{tab.icon} {tab.label}</button>
+          ))}
+        </div>
+
+        {/* QUESTS TAB */}
+        {state.tab === "quests" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: "0.65rem", letterSpacing: "0.4em", color: MAKO.textMuted, textTransform: "uppercase" }}>DAILY QUESTS</div>
+                <div style={{ fontSize: "0.8rem", color: completedDaily === totalDaily ? MAKO.success : MAKO.textDim, marginTop: 2 }}>
+                  {completedDaily === totalDaily ? "✦ All quests cleared" : `${completedDaily}/${totalDaily} completed`}
+                </div>
+              </div>
+              <div style={{ fontSize: "0.68rem", color: MAKO.textMuted }}>
+                {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 7, marginBottom: 20 }}>
+              {QUESTS.map((quest) => (
+                <QuestCard key={quest.id} quest={quest} completed={todayLog.includes(quest.id)} onToggle={handleToggle} rank={rank} vib={vib} />
+              ))}
+            </div>
+
+            {/* Gym */}
+            <div style={{
+              padding: "14px 18px",
+              background: `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`,
+              border: `1px solid ${MAKO.textMuted}20`, borderRadius: 12, marginBottom: 20,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: "0.65rem", letterSpacing: "0.3em", color: MAKO.textMuted, textTransform: "uppercase" }}>WEEKLY DUNGEON RAIDS</div>
+                  <div style={{
+                    fontSize: "1.3rem", fontWeight: 800, marginTop: 3,
+                    color: gymThisWeek >= 3 ? MAKO.success : gymThisWeek > 0 ? MAKO.warning : MAKO.textMuted,
+                  }}>{gymThisWeek} / 3</div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[0, 1, 2].map((i) => (
+                    <div key={i} style={{
+                      width: 26, height: 26, borderRadius: 6,
+                      background: i < gymThisWeek ? `linear-gradient(135deg, ${vibrateColor(MAKO.teal, vib)}, ${vibrateColor(MAKO.ocean, vib)})` : `${MAKO.textMuted}12`,
+                      border: i < gymThisWeek ? `1px solid ${MAKO.success}40` : `1px solid ${MAKO.textMuted}20`,
+                      boxShadow: i < gymThisWeek ? `0 0 ${6+vib*6}px ${MAKO.teal}40` : "none",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: "0.7rem", color: i < gymThisWeek ? "#fff" : MAKO.textMuted, fontWeight: 700,
+                    }}>{i < gymThisWeek ? "✓" : ""}</div>
+                  ))}
+                </div>
+              </div>
+              {gymThisWeek < 3 && (
+                <div style={{ fontSize: "0.68rem", color: MAKO.warning, marginTop: 8, opacity: 0.7 }}>
+                  ⚠ Missing target = {GYM_WEEKLY_PENALTY} XP penalty per missed session
+                </div>
+              )}
+            </div>
+
+            {/* Penalty */}
+            {completedDaily < totalDaily && (
+              <div style={{ textAlign: "center", marginBottom: 20 }}>
+                <div style={{ fontSize: "0.65rem", color: MAKO.danger, letterSpacing: "0.2em", marginBottom: 8, animation: "pulse 2s infinite" }}>
+                  {totalDaily - completedDaily} QUEST{totalDaily - completedDaily > 1 ? "S" : ""} REMAINING
+                </div>
+                <button onClick={handleApplyPenalty} style={{
+                  background: `${MAKO.danger}12`, border: `1px solid ${MAKO.danger}30`,
+                  borderRadius: 8, padding: "10px 24px", color: MAKO.danger,
+                  fontFamily: "'Rajdhani', sans-serif", fontWeight: 700,
+                  fontSize: "0.78rem", letterSpacing: "0.12em", cursor: "pointer", transition: "all 0.2s",
+                }}
+                  onMouseOver={(e) => { e.target.style.background = `${MAKO.danger}22`; }}
+                  onMouseOut={(e) => { e.target.style.background = `${MAKO.danger}12`; }}
+                >END DAY (Penalty: {DAILY_SKIP_PENALTY * (totalDaily - completedDaily)} XP)</button>
+              </div>
+            )}
+
+            {/* Rank Progression */}
+            <div style={{
+              padding: "14px 18px",
+              background: `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`,
+              border: `1px solid ${MAKO.textMuted}20`, borderRadius: 12,
+            }}>
+              <div style={{ fontSize: "0.65rem", letterSpacing: "0.3em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 10 }}>RANK PROGRESSION</div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {RANKS.map((r) => {
+                  const isCurrent = r.name === rank.name;
+                  const isAchieved = state.level >= r.minLevel;
+                  return (
+                    <div key={r.name} title={r.title} style={{
+                      padding: "5px 12px", borderRadius: 6,
+                      background: isCurrent ? `${r.vivid || r.color}18` : isAchieved ? `${MAKO.textMuted}10` : `${MAKO.bg}cc`,
+                      border: isCurrent ? `1px solid ${r.vivid || r.color}40` : `1px solid ${MAKO.textMuted}12`,
+                      color: isCurrent ? (r.vivid || r.color) : isAchieved ? MAKO.textDim : MAKO.textMuted,
+                      fontWeight: 700, fontSize: "0.78rem",
+                      boxShadow: isCurrent ? `0 0 ${8+vib*8}px ${r.glow}` : "none",
+                      fontFamily: "'Orbitron', sans-serif", cursor: "default",
+                    }}>{r.name}</div>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* PROGRESS TAB */}
+        {state.tab === "progress" && (
+          <>
+            <div style={{
+              padding: "18px", marginBottom: 16,
+              background: `linear-gradient(135deg, ${MAKO.bgCard}cc 0%, ${MAKO.bg}cc 100%)`,
+              border: `1px solid ${MAKO.textMuted}20`, borderRadius: 12, position: "relative",
+            }}>
+              <div style={{ fontSize: "0.65rem", letterSpacing: "0.3em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 14 }}>TRAINING HEATMAP</div>
+              <div style={{ overflowX: "auto", paddingBottom: 4 }}>
+                <HeatmapCalendar log={state.log} rank={rank} vib={vib} />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {(() => {
+                const totalDays = Object.keys(state.log).length;
+                const perfectDays = Object.entries(state.log).filter(([, v]) => QUESTS.filter(q => q.daily).every(q => v.includes(q.id))).length;
+                const totalClears = Object.values(state.log).reduce((s, v) => s + v.length, 0);
+                return [
+                  { label: "ACTIVE DAYS", value: totalDays, color: MAKO.text },
+                  { label: "PERFECT DAYS", value: perfectDays, color: MAKO.warning },
+                  { label: "TOTAL CLEARS", value: totalClears, color: MAKO.success },
+                ].map((stat, i) => (
+                  <div key={i} style={{
+                    flex: 1, textAlign: "center", padding: "12px 6px",
+                    background: `linear-gradient(135deg, ${MAKO.bgCard}aa 0%, ${MAKO.bg}aa 100%)`,
+                    border: `1px solid ${MAKO.textMuted}15`, borderRadius: 10,
+                  }}>
+                    <div style={{ fontSize: "0.55rem", letterSpacing: "0.18em", color: MAKO.textMuted, marginBottom: 4 }}>{stat.label}</div>
+                    <div style={{ fontSize: "1.2rem", fontWeight: 800, color: stat.color }}>{stat.value}</div>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            <div style={{ fontSize: "0.65rem", letterSpacing: "0.3em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 10 }}>WEEKLY MISSION LOG</div>
+            <WeeklySummary log={state.log} weeklyGymLog={state.weeklyGymLog} rank={rank} />
+          </>
+        )}
+
+        <div style={{ textAlign: "center", marginTop: 24 }}>
+          <button onClick={() => { if (confirm("⚠ SYSTEM RESET: All progress will be lost. Continue?")) dispatch({ type: "RESET" }); }}
+            style={{
+              background: "none", border: "none", color: MAKO.textMuted,
+              fontFamily: "'Rajdhani', sans-serif", fontSize: "0.68rem",
+              letterSpacing: "0.2em", cursor: "pointer", padding: "8px 16px", opacity: 0.4,
+            }}
+          >RESET SYSTEM</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<SoloLevelingFitness />);
+  </script>
+</body>
+</html>
