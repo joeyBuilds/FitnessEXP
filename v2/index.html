@@ -7,6 +7,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,7 +30,29 @@
 <body>
   <div id="root"></div>
   <script type="text/babel">
-    const { useState, useEffect, useReducer, useMemo } = React;
+    const { useState, useEffect, useReducer, useMemo, useRef, useCallback } = React;
+
+    // ─── Supabase Setup ───
+    const SUPABASE_URL = "https://bpxcqvhxhsdomsbqiwgy.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJweGNxdmh4aHNkb21zYnFpd2d5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNDgwNzMsImV4cCI6MjA4NTkyNDA3M30.7RKxQrVXRL6cDMNcjHVCK7wTqoeBGLxnDBl-f2mt39s";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    function useAuth() {
+      const [session, setSession] = useState(null);
+      const [loading, setLoading] = useState(true);
+      useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+          setSession(session);
+          setLoading(false);
+        });
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+          setSession(session);
+          setLoading(false);
+        });
+        return () => subscription.unsubscribe();
+      }, []);
+      return { session, loading };
+    }
 
     // ─── Mako Color Palette ───
     const MAKO = {
@@ -539,6 +562,74 @@
       return null;
     }
 
+    // ─── Supabase Sync Layer ───
+
+    async function loadStateFromSupabase(userId, domain) {
+      try {
+        const { data, error } = await supabase
+          .from("user_state")
+          .select("state")
+          .eq("user_id", userId)
+          .eq("domain", domain)
+          .single();
+        if (error) {
+          if (error.code === "PGRST116") return null; // no rows found
+          console.error(`Supabase load (${domain}):`, error);
+          return null;
+        }
+        return data?.state || null;
+      } catch (e) {
+        console.error(`Supabase load (${domain}):`, e);
+        return null;
+      }
+    }
+
+    async function saveStateToSupabase(userId, domain, stateObj) {
+      try {
+        const { error } = await supabase
+          .from("user_state")
+          .upsert(
+            { user_id: userId, domain, state: stateObj, updated_at: new Date().toISOString() },
+            { onConflict: "user_id,domain" }
+          );
+        if (error) { console.error(`Supabase save (${domain}):`, error); return false; }
+        return true;
+      } catch (e) {
+        console.error(`Supabase save (${domain}):`, e);
+        return false;
+      }
+    }
+
+    function extractFitnessForSave(state) {
+      return {
+        level: state.level, xp: state.xp, totalXp: state.totalXp,
+        log: state.log, weeklyGymLog: state.weeklyGymLog,
+        penalties: state.penalties, streak: state.streak,
+        lastPenaltyDate: state.lastPenaltyDate,
+      };
+    }
+
+    function extractNutritionForSave(state) {
+      return {
+        level: state.level, xp: state.xp, totalXp: state.totalXp,
+        log: state.log, penalties: state.penalties, streak: state.streak,
+        lastPenaltyDate: state.lastPenaltyDate,
+      };
+    }
+
+    function useDebouncedSupabaseSave(userId, domain, state, extractFn, localSaveFn, delay = 2000) {
+      const timerRef = useRef(null);
+      useEffect(() => {
+        if (!state.loaded || !userId) return;
+        localSaveFn(state);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+          saveStateToSupabase(userId, domain, extractFn(state));
+        }, delay);
+        return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+      }, [state.level, state.xp, state.totalXp, state.log, state.weeklyGymLog, state.penalties, state.streak, state.lastPenaltyDate, state.loaded, userId]);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════════
     // COMPONENTS
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -616,6 +707,81 @@
             LV.{level}
           </text>
         </svg>
+      );
+    }
+
+    function LoginScreen() {
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [isSignUp, setIsSignUp] = useState(false);
+      const [error, setError] = useState("");
+      const [submitting, setSubmitting] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError("");
+        setSubmitting(true);
+        try {
+          const result = isSignUp
+            ? await supabase.auth.signUp({ email, password })
+            : await supabase.auth.signInWithPassword({ email, password });
+          if (result.error) setError(result.error.message);
+        } catch (err) {
+          setError(err.message);
+        }
+        setSubmitting(false);
+      };
+
+      const inputStyle = {
+        width: "100%", padding: "12px 14px", marginBottom: 10,
+        background: MAKO.bgLight, border: `1px solid ${MAKO.textMuted}30`,
+        borderRadius: 8, color: MAKO.text,
+        fontFamily: "'Rajdhani', sans-serif", fontSize: "0.9rem", outline: "none",
+      };
+
+      return (
+        <div style={{ minHeight: "100vh", background: MAKO.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ width: "100%", maxWidth: 360, padding: "30px 24px", background: MAKO.bgCard, border: `1px solid ${MAKO.textMuted}20`, borderRadius: 14 }}>
+            <div style={{ textAlign: "center", marginBottom: 24, fontFamily: "'Orbitron', sans-serif" }}>
+              <div style={{ fontSize: "1.4rem", fontWeight: 900, color: MAKO.teal, textShadow: `0 0 20px ${MAKO.teal}40`, marginBottom: 4 }}>
+                SYSTEM ACCESS
+              </div>
+              <div style={{ fontSize: "0.65rem", color: MAKO.textMuted, letterSpacing: "0.3em" }}>
+                {isSignUp ? "CREATE HUNTER PROFILE" : "AUTHENTICATE HUNTER"}
+              </div>
+            </div>
+            <form onSubmit={handleSubmit}>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email" required style={inputStyle} />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password (min 6 chars)" required minLength={6}
+                style={{ ...inputStyle, marginBottom: 16 }} />
+              {error && (
+                <div style={{ padding: "8px 12px", marginBottom: 12, background: `${MAKO.danger}15`, border: `1px solid ${MAKO.danger}30`, borderRadius: 8, fontSize: "0.75rem", color: MAKO.danger }}>{error}</div>
+              )}
+              <button type="submit" disabled={submitting} style={{
+                width: "100%", padding: "14px 0", minHeight: 48,
+                background: `linear-gradient(135deg, ${MAKO.teal}20, ${MAKO.ocean}20)`,
+                border: `1px solid ${MAKO.teal}40`, borderRadius: 10, cursor: "pointer",
+                fontFamily: "'Orbitron', sans-serif", fontWeight: 700,
+                fontSize: "0.8rem", letterSpacing: "0.15em",
+                color: MAKO.teal, opacity: submitting ? 0.6 : 1,
+              }}>
+                {submitting ? "CONNECTING..." : isSignUp ? "CREATE ACCOUNT" : "LOGIN"}
+              </button>
+            </form>
+            <div style={{ textAlign: "center", marginTop: 16, fontSize: "0.75rem", color: MAKO.textDim }}>
+              {isSignUp ? "Already have an account?" : "Need an account?"}
+              <button onClick={() => { setIsSignUp(!isSignUp); setError(""); }} style={{
+                background: "none", border: "none", color: MAKO.teal, cursor: "pointer",
+                fontFamily: "'Rajdhani', sans-serif", fontSize: "0.75rem", fontWeight: 700,
+                marginLeft: 6, textDecoration: "underline",
+              }}>
+                {isSignUp ? "Login" : "Sign Up"}
+              </button>
+            </div>
+          </div>
+        </div>
       );
     }
 
@@ -1175,7 +1341,8 @@
     // MAIN APP
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    function App() {
+    function App({ session }) {
+      const userId = session.user.id;
       const [mainTab, setMainTab] = useState("fitness");
       const [fitnessState, fitnessDispatch] = useReducer(fitnessReducer, fitnessInitialState);
       const [nutritionState, nutritionDispatch] = useReducer(nutritionReducer, nutritionInitialState);
@@ -1183,23 +1350,45 @@
       const [showEditPastDay, setShowEditPastDay] = useState(false);
       const [editPastDayMode, setEditPastDayMode] = useState("fitness");
 
+      // Load state: Supabase first, localStorage fallback, auto-migrate
       useEffect(() => {
-        const saved = loadFitnessState();
-        fitnessDispatch({ type: "LOAD_STATE", payload: saved || {} });
-      }, []);
+        let cancelled = false;
+        async function loadAll() {
+          const [remoteFitness, remoteNutrition] = await Promise.all([
+            loadStateFromSupabase(userId, "fitness"),
+            loadStateFromSupabase(userId, "nutrition"),
+          ]);
+          if (cancelled) return;
 
-      useEffect(() => {
-        if (fitnessState.loaded) saveFitnessState(fitnessState);
-      }, [fitnessState.level, fitnessState.xp, fitnessState.totalXp, fitnessState.log, fitnessState.weeklyGymLog, fitnessState.penalties, fitnessState.streak, fitnessState.lastPenaltyDate, fitnessState.loaded]);
+          const localFitness = loadFitnessState();
+          if (remoteFitness) {
+            fitnessDispatch({ type: "LOAD_STATE", payload: remoteFitness });
+            saveFitnessState({ ...fitnessInitialState, ...remoteFitness });
+          } else if (localFitness) {
+            fitnessDispatch({ type: "LOAD_STATE", payload: localFitness });
+            saveStateToSupabase(userId, "fitness", extractFitnessForSave({ ...fitnessInitialState, ...localFitness }));
+          } else {
+            fitnessDispatch({ type: "LOAD_STATE", payload: {} });
+          }
 
-      useEffect(() => {
-        const saved = loadNutritionState();
-        nutritionDispatch({ type: "LOAD_STATE", payload: saved || {} });
-      }, []);
+          const localNutrition = loadNutritionState();
+          if (remoteNutrition) {
+            nutritionDispatch({ type: "LOAD_STATE", payload: remoteNutrition });
+            saveNutritionState({ ...nutritionInitialState, ...remoteNutrition });
+          } else if (localNutrition) {
+            nutritionDispatch({ type: "LOAD_STATE", payload: localNutrition });
+            saveStateToSupabase(userId, "nutrition", extractNutritionForSave({ ...nutritionInitialState, ...localNutrition }));
+          } else {
+            nutritionDispatch({ type: "LOAD_STATE", payload: {} });
+          }
+        }
+        loadAll();
+        return () => { cancelled = true; };
+      }, [userId]);
 
-      useEffect(() => {
-        if (nutritionState.loaded) saveNutritionState(nutritionState);
-      }, [nutritionState.level, nutritionState.xp, nutritionState.totalXp, nutritionState.log, nutritionState.penalties, nutritionState.streak, nutritionState.lastPenaltyDate, nutritionState.loaded]);
+      // Debounced saves: localStorage immediate, Supabase after 2s
+      useDebouncedSupabaseSave(userId, "fitness", fitnessState, extractFitnessForSave, saveFitnessState);
+      useDebouncedSupabaseSave(userId, "nutrition", nutritionState, extractNutritionForSave, saveNutritionState);
 
       // Auto-penalty: check for incomplete past days on load
       useEffect(() => {
@@ -1803,7 +1992,15 @@
               {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
             </div>
 
-            <div style={{ textAlign: "center", marginTop: 24, marginBottom: 16 }}>
+            <div style={{ textAlign: "center", marginTop: 24, marginBottom: 8 }}>
+              <button onClick={async () => { await supabase.auth.signOut(); }} style={{
+                background: `${MAKO.textMuted}08`, border: `1px solid ${MAKO.textMuted}25`,
+                borderRadius: 8, padding: "12px 26px", minHeight: 44, cursor: "pointer",
+                fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: "0.65rem",
+                color: MAKO.textDim, letterSpacing: "0.15em", transition: "all 0.2s",
+              }}>LOGOUT</button>
+            </div>
+            <div style={{ textAlign: "center", marginTop: 8, marginBottom: 16 }}>
               <button onClick={() => setShowResetConfirm(true)} style={{
                 background: `${MAKO.danger}08`, border: `1px solid ${MAKO.danger}25`,
                 borderRadius: 8, padding: "12px 26px", minHeight: 44, cursor: "pointer",
@@ -1816,7 +2013,22 @@
       );
     }
 
-    ReactDOM.render(<App />, document.getElementById('root'));
+    function Root() {
+      const { session, loading } = useAuth();
+      if (loading) {
+        return (
+          <div style={{ minHeight: "100vh", background: MAKO.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div style={{ color: MAKO.textDim, fontFamily: "'Rajdhani', sans-serif", fontSize: "1.1rem", letterSpacing: "0.3em" }}>
+              CONNECTING TO SYSTEM...
+            </div>
+          </div>
+        );
+      }
+      if (!session) return <LoginScreen />;
+      return <App session={session} />;
+    }
+
+    ReactDOM.render(<Root />, document.getElementById('root'));
   </script>
 </body>
 </html>
