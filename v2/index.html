@@ -722,10 +722,21 @@
         setError("");
         setSubmitting(true);
         try {
-          const result = isSignUp
-            ? await supabase.auth.signUp({ email, password })
-            : await supabase.auth.signInWithPassword({ email, password });
-          if (result.error) setError(result.error.message);
+          if (isSignUp) {
+            const result = await supabase.auth.signUp({ email, password });
+            if (result.error) {
+              // If user already exists or rate limited on signup, try logging in
+              const loginResult = await supabase.auth.signInWithPassword({ email, password });
+              if (loginResult.error) setError(loginResult.error.message);
+            } else if (!result.data?.session) {
+              // Signup succeeded but no session (e.g. unconfirmed) — try login
+              const loginResult = await supabase.auth.signInWithPassword({ email, password });
+              if (loginResult.error) setError("Account created but could not log in. Try switching to Login.");
+            }
+          } else {
+            const result = await supabase.auth.signInWithPassword({ email, password });
+            if (result.error) setError(result.error.message);
+          }
         } catch (err) {
           setError(err.message);
         }
