@@ -133,16 +133,24 @@
     const NUTRITION_GREEN = "#1a8a4a";
     const NUTRITION_GREEN_VIVID = "#30c060";
 
-    const QUESTS = [
-      { id: "stretch", name: "Stretching Protocol", desc: "Swole-in-Seven Stretch (7 min)", xp: 30, icon: "🧘", daily: true },
-      { id: "core", name: "Core Enhancement", desc: "Swole-in-Seven Core (7 min)", xp: 35, icon: "💪", daily: true },
-      { id: "pushups", name: "Push-Up Trial", desc: "50 Push-Ups", xp: 40, icon: "⬆️", daily: true },
-      { id: "squats", name: "Squat Trial", desc: "50 Squats", xp: 40, icon: "🦵", daily: true },
-      { id: "dogwalk", name: "Beast Patrol", desc: "Walk the Dogs", xp: 25, icon: "🐕", daily: true },
+    const DEFAULT_QUEST_TEMPLATES = [
+      { id: "stretch", name: "Stretching Protocol", desc: "Swole-in-Seven Stretch (7 min)", xp: 30, icon: "🧘", daily: true, weeklyTarget: null },
+      { id: "core", name: "Core Enhancement", desc: "Swole-in-Seven Core (7 min)", xp: 35, icon: "💪", daily: true, weeklyTarget: null },
+      { id: "pushups", name: "Push-Up Trial", desc: "50 Push-Ups", xp: 40, icon: "⬆️", daily: true, weeklyTarget: null },
+      { id: "squats", name: "Squat Trial", desc: "50 Squats", xp: 40, icon: "🦵", daily: true, weeklyTarget: null },
+      { id: "dogwalk", name: "Beast Patrol", desc: "Walk the Dogs", xp: 25, icon: "🐕", daily: true, weeklyTarget: null },
       { id: "gym", name: "Dungeon Raid", desc: "Gym: 30 min Incline Treadmill", xp: 60, icon: "🏋️", daily: false, weeklyTarget: 3 },
     ];
 
-    const TOTAL_QUESTS = QUESTS.length;
+    const XP_PRESETS = [
+      { label: "Light", xp: 20, desc: "Quick task, 5-10 min" },
+      { label: "Moderate", xp: 30, desc: "Solid effort, 10-20 min" },
+      { label: "Hard", xp: 45, desc: "Challenging, 20-30 min" },
+      { label: "Intense", xp: 60, desc: "Major effort, 30+ min" },
+      { label: "Elite", xp: 80, desc: "Peak challenge" },
+    ];
+
+    const QUEST_EMOJI_OPTIONS = ["💪","🏋️","🧘","🏃","🚴","🏊","⬆️","🦵","🐕","🎯","⚡","🔥","❄️","🥊","🧗","🚶","🤸","⚽","🏀","🎾","🏈","🥇","💎","🛡️","⚔️"];
 
     const MOTIVATIONAL_QUOTES = [
       { text: "I alone level up.", type: "serious" },
@@ -192,7 +200,7 @@
 
     // ─── Fitness State ───
     const fitnessInitialState = {
-      level: 1, xp: 0, totalXp: 0, log: {}, weeklyGymLog: {},
+      level: 1, xp: 0, totalXp: 0, log: {}, weeklyLog: {},
       penalties: 0, fitnessTab: "quests",
       animatingXp: false, xpGain: 0, showLevelUp: false,
       showPenalty: false, penaltyAmount: 0,
@@ -211,18 +219,33 @@
 
     function fitnessReducer(state, action) {
       switch (action.type) {
-        case "LOAD_STATE": return { ...state, ...action.payload, loaded: true };
+        case "LOAD_STATE": {
+          let payload = { ...action.payload };
+          // Migrate weeklyGymLog -> weeklyLog for existing users
+          if (payload.weeklyGymLog && !payload.weeklyLog) {
+            const weeklyLog = {};
+            Object.entries(payload.weeklyGymLog).forEach(([wk, count]) => {
+              weeklyLog[wk] = { gym: count };
+            });
+            payload.weeklyLog = weeklyLog;
+            delete payload.weeklyGymLog;
+          }
+          return { ...state, ...payload, loaded: true };
+        }
         case "COMPLETE_QUEST": {
-          const { questId } = action;
+          const { questId, quests } = action;
           const today = getDateKey();
           const todayLog = state.log[today] || [];
           if (todayLog.includes(questId)) return state;
-          const quest = QUESTS.find((q) => q.id === questId);
+          const quest = quests.find((q) => q.id === questId);
+          if (!quest) return state;
           const newLog = { ...state.log, [today]: [...todayLog, questId] };
-          let newWeeklyGym = { ...state.weeklyGymLog };
-          if (questId === "gym") {
+          let newWeeklyLog = { ...state.weeklyLog };
+          if (!quest.daily && quest.weeklyTarget) {
             const wk = getWeekKey();
-            newWeeklyGym[wk] = (newWeeklyGym[wk] || 0) + 1;
+            let weekData = { ...(newWeeklyLog[wk] || {}) };
+            weekData[questId] = (weekData[questId] || 0) + 1;
+            newWeeklyLog[wk] = weekData;
           }
           let newXp = state.xp + quest.xp;
           let newLevel = state.level;
@@ -233,30 +256,34 @@
             newLevel++;
             leveledUp = true;
           }
-          const dailyQuests = QUESTS.filter((q) => q.daily);
-          const allDailyDone = dailyQuests.every((q) => [...todayLog, questId].includes(q.id));
+          const dailyQuests = quests.filter((q) => q.daily);
+          const allDailyDone = dailyQuests.length > 0 && dailyQuests.every((q) => [...todayLog, questId].includes(q.id));
           const newStreak = allDailyDone ? state.streak + 1 : state.streak;
-          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyGymLog: newWeeklyGym, animatingXp: true, xpGain: quest.xp, showLevelUp: leveledUp, streak: newStreak };
+          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyLog: newWeeklyLog, animatingXp: true, xpGain: quest.xp, showLevelUp: leveledUp, streak: newStreak };
         }
         case "UNCOMPLETE_QUEST": {
-          const { questId } = action;
+          const { questId, quests } = action;
           const today = getDateKey();
           const todayLog = state.log[today] || [];
           if (!todayLog.includes(questId)) return state;
-          const quest = QUESTS.find((q) => q.id === questId);
+          const quest = quests.find((q) => q.id === questId);
+          if (!quest) return state;
           const newLog = { ...state.log, [today]: todayLog.filter(id => id !== questId) };
           if (newLog[today].length === 0) delete newLog[today];
-          let newWeeklyGym = { ...state.weeklyGymLog };
-          if (questId === "gym") {
+          let newWeeklyLog = { ...state.weeklyLog };
+          if (!quest.daily && quest.weeklyTarget) {
             const wk = getWeekKey();
-            newWeeklyGym[wk] = Math.max(0, (newWeeklyGym[wk] || 0) - 1);
+            let weekData = { ...(newWeeklyLog[wk] || {}) };
+            weekData[questId] = Math.max(0, (weekData[questId] || 0) - 1);
+            newWeeklyLog[wk] = weekData;
           }
           const newTotalXp = Math.max(0, state.totalXp - quest.xp);
           const { level: newLevel, xp: newXp } = recalcFitnessLevelFromXp(newTotalXp);
-          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyGymLog: newWeeklyGym, animatingXp: true, xpGain: -quest.xp };
+          return { ...state, xp: newXp, level: newLevel, totalXp: newTotalXp, log: newLog, weeklyLog: newWeeklyLog, animatingXp: true, xpGain: -quest.xp };
         }
         case "TOGGLE_QUEST_FOR_DATE": {
-          const { questId, date } = action;
+          const { questId, date, quests, archivedQuests } = action;
+          const allQuestsForLookup = [...(quests || []), ...(archivedQuests || [])];
           const dateKey = typeof date === "string" ? date : getDateKey(date);
           const dateLog = state.log[dateKey] || [];
           const isCompleted = dateLog.includes(questId);
@@ -267,36 +294,42 @@
           } else {
             newLog[dateKey] = [...dateLog, questId];
           }
-          // Recalculate weeklyGymLog from scratch
-          let newWeeklyGym = {};
-          Object.entries(newLog).forEach(([dk, quests]) => {
-            if (quests.includes("gym")) {
-              const d = new Date(dk + "T12:00:00");
-              const wk = getWeekKey(d);
-              newWeeklyGym[wk] = (newWeeklyGym[wk] || 0) + 1;
-            }
+          // Recalculate weeklyLog from scratch for all weekly quests
+          const weeklyQuestIds = (quests || []).filter(q => !q.daily && q.weeklyTarget).map(q => q.id);
+          let newWeeklyLog = {};
+          Object.entries(newLog).forEach(([dk, dayQuests]) => {
+            const d = new Date(dk + "T12:00:00");
+            const wk = getWeekKey(d);
+            weeklyQuestIds.forEach(qId => {
+              if (dayQuests.includes(qId)) {
+                if (!newWeeklyLog[wk]) newWeeklyLog[wk] = {};
+                newWeeklyLog[wk][qId] = (newWeeklyLog[wk][qId] || 0) + 1;
+              }
+            });
           });
           // Recalculate totalXp from all log entries
           let newTotalXp = 0;
           Object.values(newLog).forEach(dayQuests => {
             dayQuests.forEach(qId => {
-              const q = QUESTS.find(qu => qu.id === qId);
+              const q = allQuestsForLookup.find(qu => qu.id === qId);
               if (q) newTotalXp += q.xp;
             });
           });
           const { level: recLevel, xp: recXp } = recalcFitnessLevelFromXp(newTotalXp);
-          // Recalculate streak: consecutive days backward from today with all dailies done
-          const dailyQs = QUESTS.filter(q => q.daily);
+          // Recalculate streak
+          const dailyQs = (quests || []).filter(q => q.daily);
           let newStreak = 0;
-          let checkDate = new Date();
-          for (let i = 0; i < 365; i++) {
-            const checkKey = getDateKey(checkDate);
-            const checkLog = newLog[checkKey] || [];
-            if (!dailyQs.every(q => checkLog.includes(q.id))) break;
-            newStreak++;
-            checkDate = addDays(checkDate, -1);
+          if (dailyQs.length > 0) {
+            let checkDate = new Date();
+            for (let i = 0; i < 365; i++) {
+              const checkKey = getDateKey(checkDate);
+              const checkLog = newLog[checkKey] || [];
+              if (!dailyQs.every(q => checkLog.includes(q.id))) break;
+              newStreak++;
+              checkDate = addDays(checkDate, -1);
+            }
           }
-          return { ...state, xp: recXp, level: recLevel, totalXp: newTotalXp, log: newLog, weeklyGymLog: newWeeklyGym, streak: newStreak, animatingXp: false };
+          return { ...state, xp: recXp, level: recLevel, totalXp: newTotalXp, log: newLog, weeklyLog: newWeeklyLog, streak: newStreak, animatingXp: false };
         }
         case "APPLY_PENALTY": {
           const newXp = Math.max(0, state.xp + action.amount);
@@ -314,7 +347,7 @@
       try {
         localStorage.setItem("solo-leveling-v4", JSON.stringify({
           level: state.level, xp: state.xp, totalXp: state.totalXp,
-          log: state.log, weeklyGymLog: state.weeklyGymLog,
+          log: state.log, weeklyLog: state.weeklyLog,
           penalties: state.penalties, streak: state.streak,
           lastPenaltyDate: state.lastPenaltyDate,
         }));
@@ -603,7 +636,7 @@
     function extractFitnessForSave(state) {
       return {
         level: state.level, xp: state.xp, totalXp: state.totalXp,
-        log: state.log, weeklyGymLog: state.weeklyGymLog,
+        log: state.log, weeklyLog: state.weeklyLog,
         penalties: state.penalties, streak: state.streak,
         lastPenaltyDate: state.lastPenaltyDate,
       };
@@ -627,7 +660,51 @@
           saveStateToSupabase(userId, domain, extractFn(state));
         }, delay);
         return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-      }, [state.level, state.xp, state.totalXp, state.log, state.weeklyGymLog, state.penalties, state.streak, state.lastPenaltyDate, state.loaded, userId]);
+      }, [state.level, state.xp, state.totalXp, state.log, state.weeklyLog, state.penalties, state.streak, state.lastPenaltyDate, state.loaded, userId]);
+    }
+
+    // ─── Quest Persistence ───
+
+    async function loadUserQuests(userId) {
+      try {
+        const { data, error } = await supabase
+          .from("user_quests")
+          .select("quests")
+          .eq("user_id", userId)
+          .single();
+        if (error) {
+          if (error.code === "PGRST116") return null; // no row
+          console.error("Load quests error:", error);
+          return null;
+        }
+        return data?.quests || null;
+      } catch (e) {
+        console.error("Load quests error:", e);
+        return null;
+      }
+    }
+
+    async function saveUserQuests(userId, quests, archivedQuests) {
+      try {
+        const payload = archivedQuests && archivedQuests.length > 0
+          ? [...quests, ...archivedQuests.map(a => ({ ...a, _archived: true }))]
+          : quests;
+        const { error } = await supabase
+          .from("user_quests")
+          .upsert({ user_id: userId, quests: payload, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+        if (error) { console.error("Save quests error:", error); return false; }
+        return true;
+      } catch (e) {
+        console.error("Save quests error:", e);
+        return false;
+      }
+    }
+
+    function parseLoadedQuests(raw) {
+      if (!raw || !Array.isArray(raw)) return { quests: [], archivedQuests: [] };
+      const quests = raw.filter(q => !q._archived);
+      const archivedQuests = raw.filter(q => q._archived).map(({ _archived, ...rest }) => rest);
+      return { quests, archivedQuests };
     }
 
     // ═══════════════════════════════════════════════════════════════════════════════
@@ -791,6 +868,255 @@
                 {isSignUp ? "Login" : "Sign Up"}
               </button>
             </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Quest Form Row (shared between wizard and modal) ───
+    function QuestFormRow({ quest, onChange, onDelete, showDelete }) {
+      const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+      const inputStyle = {
+        width: "100%", padding: "10px 12px", background: MAKO.bgLight,
+        border: `1px solid ${MAKO.textMuted}25`, borderRadius: 8, color: MAKO.text,
+        fontFamily: "'Rajdhani', sans-serif", fontSize: "0.85rem", outline: "none",
+      };
+      return (
+        <div style={{ padding: "14px", background: `${MAKO.bgCard}cc`, border: `1px solid ${MAKO.textMuted}20`, borderRadius: 12, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} style={{
+              width: 44, height: 44, borderRadius: 8, border: `1px solid ${MAKO.textMuted}30`,
+              background: MAKO.bgLight, fontSize: "1.3rem", cursor: "pointer", flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>{quest.icon || "➕"}</button>
+            <input value={quest.name} onChange={(e) => onChange({ ...quest, name: e.target.value })}
+              placeholder="Quest name" maxLength={40} style={inputStyle} />
+          </div>
+          {showEmojiPicker && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10, padding: 8, background: MAKO.bgLight, borderRadius: 8, border: `1px solid ${MAKO.textMuted}20` }}>
+              {QUEST_EMOJI_OPTIONS.map(emoji => (
+                <button key={emoji} onClick={() => { onChange({ ...quest, icon: emoji }); setShowEmojiPicker(false); }}
+                  style={{ width: 36, height: 36, borderRadius: 6, border: quest.icon === emoji ? `2px solid ${MAKO.teal}` : `1px solid ${MAKO.textMuted}20`, background: quest.icon === emoji ? `${MAKO.teal}15` : "transparent", fontSize: "1.1rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+          <input value={quest.desc} onChange={(e) => onChange({ ...quest, desc: e.target.value })}
+            placeholder="Description (optional)" maxLength={80} style={{ ...inputStyle, marginBottom: 8 }} />
+          <div style={{ fontSize: "0.65rem", letterSpacing: "0.15em", color: MAKO.textMuted, marginBottom: 6 }}>XP REWARD</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
+            {XP_PRESETS.map(p => (
+              <button key={p.xp} onClick={() => onChange({ ...quest, xp: p.xp })} style={{
+                padding: "7px 12px", borderRadius: 6, cursor: "pointer", fontSize: "0.72rem", fontWeight: 700,
+                fontFamily: "'Rajdhani', sans-serif",
+                background: quest.xp === p.xp ? `${MAKO.teal}18` : `${MAKO.bgLight}`,
+                border: quest.xp === p.xp ? `1px solid ${MAKO.teal}50` : `1px solid ${MAKO.textMuted}20`,
+                color: quest.xp === p.xp ? MAKO.teal : MAKO.textDim,
+              }}>{p.label} ({p.xp})</button>
+            ))}
+            <input type="number" min={5} max={200} value={quest.xp || ""} onChange={(e) => onChange({ ...quest, xp: parseInt(e.target.value) || 0 })}
+              placeholder="Custom" style={{ ...inputStyle, width: 70, padding: "7px 8px", textAlign: "center", fontSize: "0.75rem" }} />
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div style={{ fontSize: "0.65rem", letterSpacing: "0.15em", color: MAKO.textMuted, marginRight: 4 }}>FREQUENCY</div>
+            {[{ label: "Daily", val: true }, { label: "Weekly", val: false }].map(opt => (
+              <button key={opt.label} onClick={() => onChange({ ...quest, daily: opt.val, weeklyTarget: opt.val ? null : (quest.weeklyTarget || 3) })} style={{
+                padding: "7px 14px", borderRadius: 6, cursor: "pointer", fontSize: "0.72rem", fontWeight: 700,
+                fontFamily: "'Rajdhani', sans-serif",
+                background: quest.daily === opt.val ? `${MAKO.teal}18` : MAKO.bgLight,
+                border: quest.daily === opt.val ? `1px solid ${MAKO.teal}50` : `1px solid ${MAKO.textMuted}20`,
+                color: quest.daily === opt.val ? MAKO.teal : MAKO.textDim,
+              }}>{opt.label}</button>
+            ))}
+            {!quest.daily && (
+              <div style={{ display: "flex", alignItems: "center", gap: 4, marginLeft: 6 }}>
+                <input type="number" min={1} max={7} value={quest.weeklyTarget || 3}
+                  onChange={(e) => onChange({ ...quest, weeklyTarget: parseInt(e.target.value) || 1 })}
+                  style={{ ...inputStyle, width: 44, padding: "7px 4px", textAlign: "center", fontSize: "0.75rem" }} />
+                <span style={{ fontSize: "0.65rem", color: MAKO.textDim }}>x/wk</span>
+              </div>
+            )}
+            {showDelete && (
+              <button onClick={onDelete} style={{ marginLeft: "auto", padding: "7px 12px", borderRadius: 6, cursor: "pointer", fontSize: "0.72rem", fontWeight: 700, fontFamily: "'Rajdhani', sans-serif", background: `${MAKO.danger}10`, border: `1px solid ${MAKO.danger}25`, color: MAKO.danger }}>Delete</button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Quest Setup Wizard ───
+    function QuestSetupWizard({ userId, onComplete }) {
+      const [quests, setQuests] = useState([]);
+      const [saving, setSaving] = useState(false);
+
+      const addQuest = () => {
+        setQuests([...quests, { id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: "", desc: "", xp: 30, icon: "💪", daily: true, weeklyTarget: null }]);
+      };
+
+      const updateQuest = (idx, updated) => {
+        const next = [...quests];
+        next[idx] = updated;
+        setQuests(next);
+      };
+
+      const removeQuest = (idx) => {
+        setQuests(quests.filter((_, i) => i !== idx));
+      };
+
+      const loadTemplate = () => {
+        setQuests(DEFAULT_QUEST_TEMPLATES.map(q => ({ ...q })));
+      };
+
+      const handleSave = async () => {
+        const valid = quests.filter(q => q.name.trim() && q.xp > 0);
+        if (valid.length === 0) return;
+        setSaving(true);
+        await saveUserQuests(userId, valid, []);
+        onComplete(valid);
+        setSaving(false);
+      };
+
+      const dailyXpTotal = quests.filter(q => q.daily && q.xp > 0).reduce((s, q) => s + q.xp, 0);
+      const weeklyXpTotal = quests.filter(q => !q.daily && q.xp > 0).reduce((s, q) => s + q.xp * (q.weeklyTarget || 1), 0);
+
+      return (
+        <div style={{ minHeight: "100vh", background: MAKO.bg, color: MAKO.text, fontFamily: "'Rajdhani', sans-serif" }}>
+          <div style={{ maxWidth: 440, margin: "0 auto", padding: "24px 14px 40px" }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: "1.1rem", fontWeight: 900, color: MAKO.teal, textShadow: `0 0 20px ${MAKO.teal}40`, letterSpacing: "0.1em", marginBottom: 6 }}>
+                BUILD YOUR QUEST LOG
+              </div>
+              <div style={{ fontSize: "0.75rem", color: MAKO.textDim, maxWidth: 320, margin: "0 auto" }}>
+                Every hunter needs a training regimen. Define your daily and weekly quests below.
+              </div>
+            </div>
+
+            {quests.length === 0 && (
+              <div style={{ textAlign: "center", padding: "30px 20px", background: `${MAKO.bgCard}80`, borderRadius: 12, border: `1px dashed ${MAKO.textMuted}30`, marginBottom: 16 }}>
+                <div style={{ fontSize: "2rem", marginBottom: 8 }}>⚔️</div>
+                <div style={{ fontSize: "0.8rem", color: MAKO.textDim, marginBottom: 16 }}>No quests yet. Add your first quest or load a starter template.</div>
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                  <button onClick={addQuest} style={{
+                    padding: "12px 20px", minHeight: 44, borderRadius: 8, cursor: "pointer",
+                    background: `${MAKO.teal}15`, border: `1px solid ${MAKO.teal}40`,
+                    fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "0.8rem",
+                    color: MAKO.teal, letterSpacing: "0.05em",
+                  }}>+ ADD QUEST</button>
+                  <button onClick={loadTemplate} style={{
+                    padding: "12px 20px", minHeight: 44, borderRadius: 8, cursor: "pointer",
+                    background: `${MAKO.warning}10`, border: `1px solid ${MAKO.warning}30`,
+                    fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "0.8rem",
+                    color: MAKO.warning, letterSpacing: "0.05em",
+                  }}>LOAD STARTER TEMPLATE</button>
+                </div>
+              </div>
+            )}
+
+            {quests.map((quest, idx) => (
+              <QuestFormRow key={quest.id} quest={quest} onChange={(u) => updateQuest(idx, u)} onDelete={() => removeQuest(idx)} showDelete={true} />
+            ))}
+
+            {quests.length > 0 && (
+              <>
+                <button onClick={addQuest} style={{
+                  width: "100%", padding: "12px 0", minHeight: 44, marginBottom: 16,
+                  borderRadius: 8, cursor: "pointer", background: `${MAKO.bgCard}80`,
+                  border: `1px dashed ${MAKO.textMuted}30`,
+                  fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "0.8rem",
+                  color: MAKO.textDim, letterSpacing: "0.05em",
+                }}>+ ADD ANOTHER QUEST</button>
+
+                <div style={{ display: "flex", gap: 12, justifyContent: "center", marginBottom: 16, fontSize: "0.72rem" }}>
+                  <div style={{ padding: "8px 14px", background: `${MAKO.teal}10`, borderRadius: 8, border: `1px solid ${MAKO.teal}25` }}>
+                    <span style={{ color: MAKO.textDim }}>Daily XP: </span>
+                    <span style={{ color: MAKO.teal, fontWeight: 700 }}>{dailyXpTotal}</span>
+                  </div>
+                  <div style={{ padding: "8px 14px", background: `${MAKO.warning}10`, borderRadius: 8, border: `1px solid ${MAKO.warning}25` }}>
+                    <span style={{ color: MAKO.textDim }}>Weekly XP: </span>
+                    <span style={{ color: MAKO.warning, fontWeight: 700 }}>{weeklyXpTotal}</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: "0.65rem", color: MAKO.textMuted, textAlign: "center", marginBottom: 16, lineHeight: 1.5 }}>
+                  Aim for 150-250 daily XP for steady progression. Weekly quests add bonus XP.
+                </div>
+
+                <button onClick={handleSave} disabled={saving || quests.filter(q => q.name.trim() && q.xp > 0).length === 0} style={{
+                  width: "100%", padding: "16px 0", minHeight: 52, borderRadius: 10, cursor: "pointer",
+                  background: `linear-gradient(135deg, ${MAKO.teal}20, ${MAKO.ocean}20)`,
+                  border: `1px solid ${MAKO.teal}40`,
+                  fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: "0.85rem",
+                  color: MAKO.teal, letterSpacing: "0.15em",
+                  opacity: saving ? 0.6 : 1,
+                }}>{saving ? "SAVING..." : "SAVE & BEGIN"}</button>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Quest Management Modal ───
+    function QuestManageModal({ quests, archivedQuests, userId, onSave, onClose }) {
+      const [editQuests, setEditQuests] = useState(quests.map(q => ({ ...q })));
+      const [editArchived, setEditArchived] = useState([...(archivedQuests || [])]);
+      const [saving, setSaving] = useState(false);
+
+      const addQuest = () => {
+        setEditQuests([...editQuests, { id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: "", desc: "", xp: 30, icon: "💪", daily: true, weeklyTarget: null }]);
+      };
+
+      const updateQuest = (idx, updated) => {
+        const next = [...editQuests];
+        next[idx] = updated;
+        setEditQuests(next);
+      };
+
+      const removeQuest = (idx) => {
+        const removed = editQuests[idx];
+        if (removed.id && removed.xp) {
+          setEditArchived([...editArchived, { id: removed.id, xp: removed.xp }]);
+        }
+        setEditQuests(editQuests.filter((_, i) => i !== idx));
+      };
+
+      const handleSave = async () => {
+        const valid = editQuests.filter(q => q.name.trim() && q.xp > 0);
+        setSaving(true);
+        await saveUserQuests(userId, valid, editArchived);
+        onSave(valid, editArchived);
+        setSaving(false);
+      };
+
+      return (
+        <div style={{ position: "fixed", inset: 0, zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }} />
+          <div style={{ position: "relative", width: "100%", maxWidth: 440, maxHeight: "90vh", overflow: "auto", background: MAKO.bg, border: `1px solid ${MAKO.textMuted}25`, borderRadius: 14, padding: "20px 14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontFamily: "'Orbitron', sans-serif", fontSize: "0.85rem", fontWeight: 700, color: MAKO.teal, letterSpacing: "0.1em" }}>MANAGE QUESTS</div>
+              <button onClick={onClose} style={{ background: "none", border: "none", color: MAKO.textDim, fontSize: "1.2rem", cursor: "pointer", padding: 8 }}>✕</button>
+            </div>
+
+            {editQuests.map((quest, idx) => (
+              <QuestFormRow key={quest.id} quest={quest} onChange={(u) => updateQuest(idx, u)} onDelete={() => removeQuest(idx)} showDelete={true} />
+            ))}
+
+            <button onClick={addQuest} style={{
+              width: "100%", padding: "12px 0", minHeight: 44, marginBottom: 16,
+              borderRadius: 8, cursor: "pointer", background: `${MAKO.bgCard}80`,
+              border: `1px dashed ${MAKO.textMuted}30`,
+              fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: "0.8rem",
+              color: MAKO.textDim,
+            }}>+ ADD QUEST</button>
+
+            <button onClick={handleSave} disabled={saving} style={{
+              width: "100%", padding: "14px 0", minHeight: 48, borderRadius: 10, cursor: "pointer",
+              background: `linear-gradient(135deg, ${MAKO.teal}20, ${MAKO.ocean}20)`,
+              border: `1px solid ${MAKO.teal}40`,
+              fontFamily: "'Orbitron', sans-serif", fontWeight: 700, fontSize: "0.8rem",
+              color: MAKO.teal, letterSpacing: "0.15em",
+              opacity: saving ? 0.6 : 1,
+            }}>{saving ? "SAVING..." : "SAVE CHANGES"}</button>
           </div>
         </div>
       );
@@ -1019,13 +1345,14 @@
       );
     }
 
-    function PerformanceOverview({ fitnessState, nutritionState, fitnessRank, nutritionRank }) {
+    function PerformanceOverview({ fitnessState, nutritionState, fitnessRank, nutritionRank, quests, archivedQuests }) {
+      const allQuestsForLookup = [...(quests || []), ...(archivedQuests || [])];
       const today = getDateKey();
       const fitnessTodayLog = fitnessState.log[today] || [];
       const nutritionTodayLog = nutritionState.log[today] || [];
 
-      const fitnessDaily = QUESTS.filter(q => q.daily);
-      const fitnessTodayPct = Math.round((fitnessDaily.filter(q => fitnessTodayLog.includes(q.id)).length / fitnessDaily.length) * 100);
+      const fitnessDaily = (quests || []).filter(q => q.daily);
+      const fitnessTodayPct = fitnessDaily.length > 0 ? Math.round((fitnessDaily.filter(q => fitnessTodayLog.includes(q.id)).length / fitnessDaily.length) * 100) : 0;
       const nutritionTodayPct = Math.round((nutritionTodayLog.length / TOTAL_NUTRITION_ITEMS) * 100);
 
       const weekStart = new Date();
@@ -1037,7 +1364,7 @@
         const key = getDateKey(date);
         const fLog = fitnessState.log[key] || [];
         const nLog = nutritionState.log[key] || [];
-        fLog.forEach(qid => { const q = QUESTS.find(x => x.id === qid); if (q) fitnessWeekXp += q.xp; });
+        fLog.forEach(qid => { const q = allQuestsForLookup.find(x => x.id === qid); if (q) fitnessWeekXp += q.xp; });
         nLog.forEach(iid => { const i = ALL_NUTRITION_ITEMS.find(x => x.id === iid); if (i) nutritionWeekXp += i.xp; });
       }
 
@@ -1174,7 +1501,7 @@
     // EDIT PAST DAY MODAL
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    function EditPastDayModal({ mode, fitnessLog, nutritionLog, onToggleFitnessQuest, onToggleNutritionItem, onClose }) {
+    function EditPastDayModal({ mode, fitnessLog, nutritionLog, onToggleFitnessQuest, onToggleNutritionItem, onClose, quests }) {
       const [selectedDate, setSelectedDate] = useState(() => {
         const yesterday = addDays(new Date(), -1);
         return getDateKey(yesterday);
@@ -1258,10 +1585,10 @@
             {activeTab === "fitness" && (
               <div>
                 <div style={{ fontSize: "0.64rem", letterSpacing: "0.2em", color: MAKO.textMuted, marginBottom: 8 }}>
-                  QUESTS — {selectedFitnessLog.length}/{QUESTS.length} COMPLETED
+                  QUESTS — {selectedFitnessLog.length}/{(quests || []).length} COMPLETED
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  {QUESTS.map((quest) => {
+                  {(quests || []).map((quest) => {
                     const completed = selectedFitnessLog.includes(quest.id);
                     return (
                       <div key={quest.id}
@@ -1360,14 +1687,18 @@
       const [showResetConfirm, setShowResetConfirm] = useState(false);
       const [showEditPastDay, setShowEditPastDay] = useState(false);
       const [editPastDayMode, setEditPastDayMode] = useState("fitness");
+      const [userQuests, setUserQuests] = useState(null); // null=loading, []=new user, [...]= has quests
+      const [archivedQuests, setArchivedQuests] = useState([]);
+      const [showManageQuests, setShowManageQuests] = useState(false);
 
-      // Load state: Supabase first, localStorage fallback, auto-migrate
+      // Load state + quests: Supabase first, localStorage fallback, auto-migrate
       useEffect(() => {
         let cancelled = false;
         async function loadAll() {
-          const [remoteFitness, remoteNutrition] = await Promise.all([
+          const [remoteFitness, remoteNutrition, rawQuests] = await Promise.all([
             loadStateFromSupabase(userId, "fitness"),
             loadStateFromSupabase(userId, "nutrition"),
+            loadUserQuests(userId),
           ]);
           if (cancelled) return;
 
@@ -1392,6 +1723,26 @@
           } else {
             nutritionDispatch({ type: "LOAD_STATE", payload: {} });
           }
+
+          // Load quests
+          if (rawQuests) {
+            const { quests: q, archivedQuests: aq } = parseLoadedQuests(rawQuests);
+            setUserQuests(q);
+            setArchivedQuests(aq);
+          } else {
+            // No quests row — check if existing user (has fitness log data) or new user
+            const hasExistingData = remoteFitness && Object.keys(remoteFitness.log || {}).length > 0
+              || localFitness && Object.keys(localFitness.log || {}).length > 0;
+            if (hasExistingData) {
+              // Existing user: auto-migrate with default quests
+              await saveUserQuests(userId, DEFAULT_QUEST_TEMPLATES, []);
+              setUserQuests(DEFAULT_QUEST_TEMPLATES.map(q => ({ ...q })));
+            } else {
+              // New user: empty slate, show setup wizard
+              setUserQuests([]);
+            }
+            setArchivedQuests([]);
+          }
         }
         loadAll();
         return () => { cancelled = true; };
@@ -1403,7 +1754,7 @@
 
       // Auto-penalty: check for incomplete past days on load
       useEffect(() => {
-        if (!fitnessState.loaded || !nutritionState.loaded) return;
+        if (!fitnessState.loaded || !nutritionState.loaded || !userQuests || userQuests.length === 0) return;
 
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
@@ -1420,7 +1771,7 @@
         const fitnessStart = fitnessState.lastPenaltyDate || yesterdayKey;
         let fitnessPenaltyTotal = 0;
         let fitnessPenaltyDays = 0;
-        const dailyQuestList = QUESTS.filter(q => q.daily);
+        const dailyQuestList = userQuests.filter(q => q.daily);
         {
           const startD = new Date(fitnessStart + "T00:00:00");
           startD.setDate(startD.getDate() + 1);
@@ -1467,7 +1818,7 @@
         } else {
           nutritionDispatch({ type: "SET_LAST_PENALTY_DATE", date: yesterdayKey });
         }
-      }, [fitnessState.loaded, nutritionState.loaded]);
+      }, [fitnessState.loaded, nutritionState.loaded, userQuests]);
 
       const today = getDateKey();
       const fitnessTodayLog = fitnessState.log[today] || [];
@@ -1475,11 +1826,13 @@
       const nextFitnessRank = getNextFitnessRank(fitnessState.level);
       const fitnessXpNeeded = getFitnessXpForLevel(fitnessState.level);
       const fitnessXpPercent = Math.min((fitnessState.xp / fitnessXpNeeded) * 100, 100);
-      const dailyQuests = QUESTS.filter((q) => q.daily);
+      const questsOrEmpty = userQuests || [];
+      const dailyQuests = questsOrEmpty.filter((q) => q.daily);
+      const weeklyQuests = questsOrEmpty.filter((q) => !q.daily && q.weeklyTarget);
       const completedDaily = dailyQuests.filter((q) => fitnessTodayLog.includes(q.id)).length;
       const totalDaily = dailyQuests.length;
       const weekKey = getWeekKey();
-      const gymThisWeek = fitnessState.weeklyGymLog[weekKey] || 0;
+      const weeklyLogThisWeek = fitnessState.weeklyLog[weekKey] || {};
       const quote = useMemo(() => getDailyQuote(), []);
       const fitnessVib = getFitnessVibrancy(fitnessState.level);
       const fitnessAccent = fitnessRank.vivid || fitnessRank.color;
@@ -1511,8 +1864,8 @@
       }, 0);
 
       const handleFitnessToggle = (questId, wasCompleted) => {
-        if (wasCompleted) fitnessDispatch({ type: "UNCOMPLETE_QUEST", questId });
-        else fitnessDispatch({ type: "COMPLETE_QUEST", questId });
+        if (wasCompleted) fitnessDispatch({ type: "UNCOMPLETE_QUEST", questId, quests: questsOrEmpty });
+        else fitnessDispatch({ type: "COMPLETE_QUEST", questId, quests: questsOrEmpty });
       };
 
       const handleNutritionToggle = (itemId) => {
@@ -1537,12 +1890,16 @@
         setShowEditPastDay(true);
       };
 
-      if (!fitnessState.loaded || !nutritionState.loaded) {
+      if (!fitnessState.loaded || !nutritionState.loaded || userQuests === null) {
         return (
           <div style={{ minHeight: "100vh", background: MAKO.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <div style={{ color: MAKO.textDim, fontFamily: "'Rajdhani', sans-serif", fontSize: "1.1rem", letterSpacing: "0.3em" }}>INITIALIZING SYSTEM...</div>
           </div>
         );
+      }
+
+      if (userQuests.length === 0) {
+        return <QuestSetupWizard userId={userId} onComplete={(quests) => { setUserQuests(quests); setArchivedQuests([]); }} />;
       }
 
       const currentAccent = mainTab === "fitness" ? fitnessRedAccent : nutritionGreenAccent;
@@ -1574,9 +1931,20 @@
               mode={editPastDayMode}
               fitnessLog={fitnessState.log}
               nutritionLog={nutritionState.log}
-              onToggleFitnessQuest={(questId, date) => fitnessDispatch({ type: "TOGGLE_QUEST_FOR_DATE", questId, date })}
+              quests={questsOrEmpty}
+              onToggleFitnessQuest={(questId, date) => fitnessDispatch({ type: "TOGGLE_QUEST_FOR_DATE", questId, date, quests: questsOrEmpty, archivedQuests })}
               onToggleNutritionItem={(itemId, date) => nutritionDispatch({ type: "TOGGLE_ITEM_FOR_DATE", itemId, date })}
               onClose={() => setShowEditPastDay(false)}
+            />
+          )}
+
+          {showManageQuests && (
+            <QuestManageModal
+              quests={questsOrEmpty}
+              archivedQuests={archivedQuests}
+              userId={userId}
+              onSave={(q, aq) => { setUserQuests(q); setArchivedQuests(aq); setShowManageQuests(false); }}
+              onClose={() => setShowManageQuests(false)}
             />
           )}
 
@@ -1712,30 +2080,38 @@
                           {completedDaily === totalDaily ? "✦ All cleared" : `${completedDaily}/${totalDaily} completed`}
                         </div>
                       </div>
-                      <div style={{ fontSize: "0.66rem", color: MAKO.textMuted }}>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
-                      {QUESTS.map((quest) => <QuestCard key={quest.id} quest={quest} completed={fitnessTodayLog.includes(quest.id)} onToggle={handleFitnessToggle} rank={fitnessRank} vib={fitnessVib} accentOverride={fitnessRedAccent} />)}
-                    </div>
-                    <div style={{ padding: "10px 12px", background: `linear-gradient(90deg, rgba(140,30,40,0.06) 0%, ${MAKO.bgCard}cc 40%, ${MAKO.bg}cc 100%)`, border: `1px solid ${fitnessRedAccent}18`, borderRadius: 10, marginBottom: 12 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div>
-                          <div style={{ fontSize: "0.64rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase" }}>WEEKLY RAIDS</div>
-                          <div style={{ fontSize: "1rem", fontWeight: 800, marginTop: 2, color: gymThisWeek >= 3 ? MAKO.success : gymThisWeek > 0 ? fitnessRedAccent : MAKO.textMuted }}>{gymThisWeek} / 3</div>
-                        </div>
-                        <div style={{ display: "flex", gap: 4 }}>
-                          {[0, 1, 2].map((i) => (
-                            <div key={i} style={{
-                              width: 20, height: 20, borderRadius: 5,
-                              background: i < gymThisWeek ? `linear-gradient(135deg, ${fitnessXpStart}, ${fitnessRedAccent})` : `${MAKO.textMuted}12`,
-                              border: i < gymThisWeek ? `1px solid ${fitnessRedAccent}40` : `1px solid ${MAKO.textMuted}20`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: "0.6rem", color: i < gymThisWeek ? "#fff" : MAKO.textMuted, fontWeight: 700,
-                            }}>{i < gymThisWeek ? "✓" : ""}</div>
-                          ))}
-                        </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ fontSize: "0.66rem", color: MAKO.textMuted }}>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</div>
+                        <button onClick={() => setShowManageQuests(true)} style={{ background: "none", border: `1px solid ${MAKO.textMuted}25`, borderRadius: 6, padding: "5px 8px", cursor: "pointer", fontSize: "0.75rem", color: MAKO.textDim, lineHeight: 1 }}>⚙️</button>
                       </div>
                     </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
+                      {questsOrEmpty.map((quest) => <QuestCard key={quest.id} quest={quest} completed={fitnessTodayLog.includes(quest.id)} onToggle={handleFitnessToggle} rank={fitnessRank} vib={fitnessVib} accentOverride={fitnessRedAccent} />)}
+                    </div>
+                    {weeklyQuests.length > 0 && weeklyQuests.map(quest => {
+                      const thisWeekCount = weeklyLogThisWeek[quest.id] || 0;
+                      return (
+                        <div key={quest.id} style={{ padding: "10px 12px", background: `linear-gradient(90deg, rgba(140,30,40,0.06) 0%, ${MAKO.bgCard}cc 40%, ${MAKO.bg}cc 100%)`, border: `1px solid ${fitnessRedAccent}18`, borderRadius: 10, marginBottom: 12 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontSize: "0.64rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase" }}>WEEKLY: {quest.name.toUpperCase()}</div>
+                              <div style={{ fontSize: "1rem", fontWeight: 800, marginTop: 2, color: thisWeekCount >= quest.weeklyTarget ? MAKO.success : thisWeekCount > 0 ? fitnessRedAccent : MAKO.textMuted }}>{thisWeekCount} / {quest.weeklyTarget}</div>
+                            </div>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              {Array.from({ length: quest.weeklyTarget }).map((_, i) => (
+                                <div key={i} style={{
+                                  width: 20, height: 20, borderRadius: 5,
+                                  background: i < thisWeekCount ? `linear-gradient(135deg, ${fitnessXpStart}, ${fitnessRedAccent})` : `${MAKO.textMuted}12`,
+                                  border: i < thisWeekCount ? `1px solid ${fitnessRedAccent}40` : `1px solid ${MAKO.textMuted}20`,
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  fontSize: "0.6rem", color: i < thisWeekCount ? "#fff" : MAKO.textMuted, fontWeight: 700,
+                                }}>{i < thisWeekCount ? "✓" : ""}</div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                     {completedDaily < totalDaily && (
                       <div style={{ textAlign: "center", marginBottom: 12 }}>
                         <div style={{ fontSize: "0.64rem", color: MAKO.danger, letterSpacing: "0.15em", animation: "pulse 2s infinite" }}>
@@ -1758,12 +2134,12 @@
                   <>
                     <div style={{ padding: "12px", marginBottom: 10, background: `linear-gradient(90deg, rgba(140,30,40,0.06) 0%, ${MAKO.bgCard}cc 30%, ${MAKO.bg}cc 100%)`, border: `1px solid ${fitnessRedAccent}18`, borderRadius: 10 }}>
                       <div style={{ fontSize: "0.64rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 8 }}>TRAINING HEATMAP</div>
-                      <Heatmap log={fitnessState.log} totalItems={TOTAL_QUESTS} accentColor={fitnessRedAccent} vib={fitnessVib} />
+                      <Heatmap log={fitnessState.log} totalItems={questsOrEmpty.length} accentColor={fitnessRedAccent} vib={fitnessVib} />
                     </div>
                     <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
                       {(() => {
                         const totalDays = Object.keys(fitnessState.log).length;
-                        const perfectDays = Object.entries(fitnessState.log).filter(([, v]) => QUESTS.filter(q => q.daily).every(q => v.includes(q.id))).length;
+                        const perfectDays = Object.entries(fitnessState.log).filter(([, v]) => dailyQuests.length > 0 && dailyQuests.every(q => v.includes(q.id))).length;
                         const totalClears = Object.values(fitnessState.log).reduce((s, v) => s + v.length, 0);
                         return [
                           { label: "ACTIVE", value: totalDays, color: MAKO.text },
@@ -1779,7 +2155,7 @@
                     </div>
                   </>
                 )}
-                <PerformanceOverview fitnessState={fitnessState} nutritionState={nutritionState} fitnessRank={fitnessRank} nutritionRank={nutritionRank} />
+                <PerformanceOverview fitnessState={fitnessState} nutritionState={nutritionState} fitnessRank={fitnessRank} nutritionRank={nutritionRank} quests={questsOrEmpty} archivedQuests={archivedQuests} />
                 <div style={{ padding: "10px 12px", marginTop: 10, background: `linear-gradient(90deg, rgba(140,30,40,0.06) 0%, ${MAKO.bgCard}cc 40%, ${MAKO.bg}cc 100%)`, border: `1px solid ${fitnessRedAccent}18`, borderRadius: 10 }}>
                   <div style={{ fontSize: "0.64rem", letterSpacing: "0.2em", color: MAKO.textMuted, textTransform: "uppercase", marginBottom: 6 }}>RANK PROGRESSION</div>
                   <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
@@ -1995,7 +2371,7 @@
                     </div>
                   </>
                 )}
-                <PerformanceOverview fitnessState={fitnessState} nutritionState={nutritionState} fitnessRank={fitnessRank} nutritionRank={nutritionRank} />
+                <PerformanceOverview fitnessState={fitnessState} nutritionState={nutritionState} fitnessRank={fitnessRank} nutritionRank={nutritionRank} quests={questsOrEmpty} archivedQuests={archivedQuests} />
               </>
             )}
 
